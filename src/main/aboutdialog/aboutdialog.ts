@@ -6,12 +6,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ThemedWindow } from '../dialog/themedwindow';
 import { app } from 'electron';
+import { PRODUCT_NAME } from '../branding';
 
 export class AboutDialog {
   constructor(options: AboutDialog.IOptions) {
     this._window = new ThemedWindow({
       isDarkTheme: options.isDarkTheme,
-      title: 'About JupyterLab Desktop',
+      // [UAV-IDE MODIFY] Keep the upstream dialog behavior and only replace product identity.
+      title: `About ${PRODUCT_NAME}`,
       width: 400,
       height: 275,
       preload: path.join(__dirname, './preload.js')
@@ -70,7 +72,7 @@ export class AboutDialog {
           </div>
           <div class="app-title-version">
             <div class="app-title">
-              JupyterLab Desktop
+              ${PRODUCT_NAME}
             </div>
             <div class="app-version">
               Version <%= version %>

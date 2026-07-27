@@ -331,8 +331,16 @@ FunctionEnd
 
 !macro preInit
 	SetRegView 64
-	WriteRegExpandStr HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation "C:\JupyterLab"
-	WriteRegExpandStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "C:\JupyterLab"
+	; [UAV-IDE MODIFY] Default new FleetDock installs to Program Files without
+	; overwriting an existing upgrade location.
+	ReadRegStr $0 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+	${If} $0 == ""
+		ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+	${EndIf}
+	${If} $0 == ""
+		WriteRegExpandStr HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation "C:\Program Files\FleetDock IDEA"
+		WriteRegExpandStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "C:\Program Files\FleetDock IDEA"
+	${EndIf}
 !macroend
 
 !macro customInstall
