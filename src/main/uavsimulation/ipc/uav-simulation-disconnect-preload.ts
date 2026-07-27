@@ -1,7 +1,7 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { EventTypeMain } from '../../eventtypes';
+import { EventTypeMain } from '../../fleetdock/eventtypes';
 
 const { contextBridge, ipcRenderer } = require('electron');
 

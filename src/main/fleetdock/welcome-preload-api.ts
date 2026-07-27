@@ -2,7 +2,7 @@
 // Distributed under the terms of the Modified BSD License.
 
 import { ipcRenderer } from 'electron';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from './eventtypes';
 
 export const fleetDockWelcomePreloadApi = {
   createNewApplication: (application: unknown) =>

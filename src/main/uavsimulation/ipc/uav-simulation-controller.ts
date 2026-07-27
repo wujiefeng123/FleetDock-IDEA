@@ -4,7 +4,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import { SimulationConfig, SimulationStartResult } from '../../devices/types';
 import { EventManager } from '../../eventmanager';
-import { EventTypeMain } from '../../eventtypes';
+import { EventTypeMain } from '../../fleetdock/eventtypes';
 import {
   cleanupFleetDockMavsdkServers,
   listFleetDockMavsdkServers

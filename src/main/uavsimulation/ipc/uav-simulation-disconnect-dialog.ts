@@ -6,7 +6,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import { ThemedWindow } from '../../dialog/themedwindow';
-import { EventTypeMain } from '../../eventtypes';
+import { EventTypeMain } from '../../fleetdock/eventtypes';
 import { IFleetDockMavsdkServerProcess } from '../../fleetdock/mavsdk-cleanup';
 
 const TXT = {

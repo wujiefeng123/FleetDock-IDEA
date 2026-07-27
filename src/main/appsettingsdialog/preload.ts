@@ -1,4 +1,4 @@
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from '../fleetdock/eventtypes';
 
 const { contextBridge, ipcRenderer } = require('electron');
 

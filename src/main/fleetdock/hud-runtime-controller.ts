@@ -3,7 +3,7 @@
 
 import * as http from 'http';
 import type { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from './eventtypes';
 import { SettingType, WorkspaceSettings } from '../config/settings';
 import { FleetDockHudWindowController } from './hud-window-controller';
 

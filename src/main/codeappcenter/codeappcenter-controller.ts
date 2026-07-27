@@ -2,7 +2,7 @@
 // Distributed under the terms of the Modified BSD License.
 
 import { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from '../fleetdock/eventtypes';
 import { CodeAppCenterAuthError, CodeAppCenterClient } from './client';
 import { CodeAppCenterSettings } from './settings';
 import {

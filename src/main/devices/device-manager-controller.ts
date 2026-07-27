@@ -7,7 +7,7 @@ import * as path from 'path';
 import { WorkspaceSettings } from '../config/settings';
 import { DeviceManagerDialog } from '../devicemanagerdialog/devicemanagerdialog';
 import { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from '../fleetdock/eventtypes';
 import { DroneDevice, PhysicalDeviceConnection } from './types';
 import { DeviceRegistry } from './registry';
 import { DeviceStore } from './storage/device-store';

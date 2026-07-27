@@ -6,7 +6,7 @@ import { ApplicationSettingsDialog } from '../appsettingsdialog/appsettingsdialo
 import { CodeAppCenterSettings } from '../codeappcenter/settings';
 import { CodeAppCenterDialog } from '../codeappcenterdialog/codeappcenterdialog';
 import { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from '../fleetdock/eventtypes';
 import { RoutePickerDialog } from '../routepicker/routepicker';
 import { SessionConfig } from '../config/sessionconfig';
 import { WaypointPickerDialog } from '../waypointpicker/waypointpicker';

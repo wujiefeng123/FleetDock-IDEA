@@ -2,7 +2,6 @@
 // Distributed under the terms of the Modified BSD License.
 
 import { ipcMain } from 'electron';
-import { EventTypeMain } from './eventtypes';
 import { IDisposable } from './tokens';
 
 export type AsyncEventHandlerMain = (
@@ -16,10 +15,7 @@ export type SyncEventHandlerMain = (
 ) => any;
 
 export class EventManager implements IDisposable {
-  registerEventHandler(
-    eventType: EventTypeMain,
-    handler: AsyncEventHandlerMain
-  ) {
+  registerEventHandler(eventType: string, handler: AsyncEventHandlerMain) {
     if (!this._asyncEventHandlers.has(eventType)) {
       this._asyncEventHandlers.set(eventType, []);
     }
@@ -28,10 +24,7 @@ export class EventManager implements IDisposable {
     ipcMain.on(eventType, handler);
   }
 
-  registerSyncEventHandler(
-    eventType: EventTypeMain,
-    handler: SyncEventHandlerMain
-  ) {
+  registerSyncEventHandler(eventType: string, handler: SyncEventHandlerMain) {
     if (!this._syncEventHandlers.has(eventType)) {
       this._syncEventHandlers.set(eventType, []);
     }
@@ -40,10 +33,7 @@ export class EventManager implements IDisposable {
     ipcMain.handle(eventType, handler);
   }
 
-  unregisterEventHandler(
-    eventType: EventTypeMain,
-    handler: AsyncEventHandlerMain
-  ) {
+  unregisterEventHandler(eventType: string, handler: AsyncEventHandlerMain) {
     if (!this._asyncEventHandlers.has(eventType)) {
       return;
     }
@@ -56,10 +46,7 @@ export class EventManager implements IDisposable {
     }
   }
 
-  unregisterSyncEventHandler(
-    eventType: EventTypeMain,
-    handler: SyncEventHandlerMain
-  ) {
+  unregisterSyncEventHandler(eventType: string, handler: SyncEventHandlerMain) {
     if (!this._syncEventHandlers.has(eventType)) {
       return;
     }
@@ -76,7 +63,7 @@ export class EventManager implements IDisposable {
 
   unregisterAllEventHandlers() {
     this._asyncEventHandlers.forEach(
-      (handlers: AsyncEventHandlerMain[], eventType: EventTypeMain) => {
+      (handlers: AsyncEventHandlerMain[], eventType: string) => {
         for (const handler of handlers) {
           ipcMain.removeListener(eventType, handler);
         }
@@ -101,9 +88,8 @@ export class EventManager implements IDisposable {
     return Promise.resolve();
   }
 
-  private _asyncEventHandlers = new Map<
-    EventTypeMain,
-    AsyncEventHandlerMain[]
-  >();
-  private _syncEventHandlers = new Map<EventTypeMain, SyncEventHandlerMain[]>();
+  // [UAV-IDE MODIFY] Accept extension-owned IPC channel strings without
+  // requiring product events in the upstream EventTypeMain enum.
+  private _asyncEventHandlers = new Map<string, AsyncEventHandlerMain[]>();
+  private _syncEventHandlers = new Map<string, SyncEventHandlerMain[]>();
 }

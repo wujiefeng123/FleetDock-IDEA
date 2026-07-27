@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EventTypeMain, EventTypeRenderer } from '../../src/main/eventtypes';
+import { FleetDockEventTypeMain } from '../../src/main/fleetdock/eventtypes';
 
 // IPC channel strings; a typo silently breaks the channel, so they are pinned.
 
@@ -52,9 +53,21 @@ describe('EventTypeRenderer channel strings', () => {
   });
 });
 
+describe('FleetDockEventTypeMain channel strings', () => {
+  it.each([
+    [FleetDockEventTypeMain.CreateNewApplication, 'create-new-application'],
+    [FleetDockEventTypeMain.OpenDeviceManager, 'open-device-manager'],
+    [FleetDockEventTypeMain.UavSimulationStart, 'uav-simulation-start'],
+    [FleetDockEventTypeMain.FleetDockHudSnapshot, 'fleetdock-hud-snapshot']
+  ])('"%s" stays stable', (value, expected) => {
+    expect(value).toBe(expected);
+  });
+});
+
 describe.each([
   ['EventTypeMain', EventTypeMain],
-  ['EventTypeRenderer', EventTypeRenderer]
+  ['EventTypeRenderer', EventTypeRenderer],
+  ['FleetDockEventTypeMain', FleetDockEventTypeMain]
 ])('%s structural invariants', (name, registry) => {
   it('every value is a non-empty string', () => {
     for (const [key, val] of Object.entries(registry)) {

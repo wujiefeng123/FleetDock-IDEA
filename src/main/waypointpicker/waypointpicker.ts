@@ -6,7 +6,7 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from '../fleetdock/eventtypes';
 import { ThemedWindow } from '../dialog/themedwindow';
 
 const TIANDITU_API_KEY = '4e4544783f309d1008b7312578367c19';

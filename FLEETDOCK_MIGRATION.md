@@ -78,8 +78,9 @@ surface is intentionally limited to:
 
 - `src/main/app.ts`, `src/main/main.ts`, and
   `src/main/sessionwindow/sessionwindow.ts` for lifecycle attachment;
-- `src/main/eventtypes.ts`, the two upstream preload entry points, and
-  `webpack.preload.js` for explicit IPC exposure;
+- `src/main/eventmanager.ts`, the two upstream preload entry points, and
+  `webpack.preload.js` for generic extension channels and explicit IPC
+  exposure;
 - `package.json` and the installer/brand files for FleetDock packaging;
 - the About dialog for the user-visible product name.
 

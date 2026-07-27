@@ -7,7 +7,7 @@ import { ApplicationWorkspaceService } from '../application/application-workspac
 import type { ICreateApplicationRequest } from '../application/application-types';
 import { readApplicationConfig } from '../config/application';
 import type { EventManager } from '../eventmanager';
-import { EventTypeMain } from '../eventtypes';
+import { EventTypeMain } from './eventtypes';
 import { getBundledPythonPath } from '../utils';
 import type { DeviceRegistry } from '../devices/registry';
 
