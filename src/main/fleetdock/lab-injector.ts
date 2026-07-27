@@ -49,6 +49,11 @@ export class FleetDockLabInjector {
 
     this._attached.push(attached);
     webContents.on('dom-ready', attached.inject);
+    // [UAV-IDE MODIFY] Cover fast/cached loads where the extension hook is
+    // attached after the renderer's DOM-ready event.
+    if (!webContents.isLoadingMainFrame()) {
+      void attached.inject();
+    }
     webContents.once('destroyed', () => this._detach(attached));
   }
 

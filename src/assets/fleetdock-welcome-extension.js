@@ -2,25 +2,59 @@
   if (window.__fleetDockWelcomeExtensionInstalled) {
     return;
   }
-  window.__fleetDockWelcomeExtensionInstalled = true;
 
   const startColumn = document.querySelector('.start-col');
   if (!startColumn || !window.electronAPI?.createNewApplication) {
     return;
   }
+  const rowTitle = startColumn.querySelector('.row-title');
+  if (!rowTitle) {
+    return;
+  }
 
   const action = document.createElement('div');
   action.className = 'row action-row fleetdock-welcome-action';
-  action.innerHTML =
-    '<a href="#"><span class="fleetdock-welcome-badge">F</span>' +
-    '<span>创建 FleetDock 应用</span></a>';
-  startColumn
-    .querySelector('.row-title')
-    ?.insertAdjacentElement('afterend', action);
-  action.querySelector('a').addEventListener('click', event => {
+  const actionLink = document.createElement('a');
+  actionLink.href = '#';
+  const badge = document.createElement('span');
+  badge.className = 'fleetdock-welcome-badge';
+  badge.textContent = 'F';
+  const actionLabel = document.createElement('span');
+  actionLabel.className = 'fleetdock-welcome-label';
+  actionLabel.textContent = '创建 FleetDock 应用';
+  actionLink.append(badge, actionLabel);
+  action.appendChild(actionLink);
+  rowTitle.insertAdjacentElement('afterend', action);
+  actionLink.addEventListener('click', event => {
     event.preventDefault();
     openDialog();
   });
+  // [UAV-IDE MODIFY] Upstream refreshes the start actions after asynchronous
+  // environment discovery. Reattach the same extension action if that render
+  // replaces its parent DOM.
+  if (!window.__fleetDockWelcomeExtensionObserver) {
+    const restoreAction = () => {
+      if (document.documentElement.contains(action)) {
+        return;
+      }
+      document
+        .querySelector('.start-col .row-title')
+        ?.insertAdjacentElement('afterend', action);
+    };
+    window.__fleetDockWelcomeExtensionObserver = new MutationObserver(
+      restoreAction
+    );
+    window.__fleetDockWelcomeExtensionObserver.observe(
+      document.documentElement,
+      {
+        childList: true,
+        subtree: true
+      }
+    );
+  }
+  // [UAV-IDE MODIFY] Mark installation only after DOM construction succeeds;
+  // a Trusted Types or early-load failure must remain retryable.
+  window.__fleetDockWelcomeExtensionInstalled = true;
 
   function openDialog() {
     if (document.querySelector('.fleetdock-welcome-modal')) {
@@ -28,51 +62,85 @@
     }
     const modal = document.createElement('div');
     modal.className = 'fleetdock-welcome-modal';
-    modal.innerHTML = `
-      <div class="fleetdock-welcome-dialog" role="dialog" aria-modal="true">
-        <h2>创建 FleetDock 应用</h2>
-        <div class="fleetdock-welcome-grid">
-          <label class="fleetdock-welcome-field">
-            <span>应用标识</span>
-            <input data-field="appCode" placeholder="inspection-app">
-          </label>
-          <label class="fleetdock-welcome-field">
-            <span>应用名称</span>
-            <input data-field="name" placeholder="巡检应用">
-          </label>
-          <label class="fleetdock-welcome-field fleetdock-welcome-field-wide">
-            <span>保存目录</span>
-            <span class="fleetdock-welcome-path-row">
-              <input data-field="workingDirectory" readonly>
-              <button type="button" data-action="browse">选择…</button>
-            </span>
-          </label>
-          <label class="fleetdock-welcome-field">
-            <span>版本</span>
-            <input data-field="version" value="0.1.0">
-          </label>
-          <label class="fleetdock-welcome-field">
-            <span>入口文件</span>
-            <input data-field="entryFile" value="main.py">
-          </label>
-          <label class="fleetdock-welcome-field fleetdock-welcome-field-wide">
-            <span>说明</span>
-            <textarea data-field="description" rows="3"></textarea>
-          </label>
-        </div>
-        <div class="fleetdock-welcome-status" data-role="status"></div>
-        <div class="fleetdock-welcome-actions">
-          <button type="button" data-action="cancel">取消</button>
-          <button type="button" data-action="create">创建并打开</button>
-        </div>
-      </div>`;
+    const dialog = document.createElement('div');
+    dialog.className = 'fleetdock-welcome-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    const heading = document.createElement('h2');
+    heading.textContent = '创建 FleetDock 应用';
+    const grid = document.createElement('div');
+    grid.className = 'fleetdock-welcome-grid';
+    const fields = {};
+
+    const addField = (name, labelText, options = {}) => {
+      const label = document.createElement('label');
+      label.className =
+        'fleetdock-welcome-field' +
+        (options.wide ? ' fleetdock-welcome-field-wide' : '');
+      const caption = document.createElement('span');
+      caption.textContent = labelText;
+      const input = document.createElement(
+        options.multiline ? 'textarea' : 'input'
+      );
+      input.dataset.field = name;
+      if (options.placeholder) {
+        input.placeholder = options.placeholder;
+      }
+      if (options.value) {
+        input.value = options.value;
+      }
+      if (options.multiline) {
+        input.rows = options.rows || 3;
+      }
+      label.append(caption, input);
+      grid.appendChild(label);
+      fields[name] = input;
+      return { label, input };
+    };
+
+    addField('appCode', '应用标识', { placeholder: 'inspection-app' });
+    addField('name', '应用名称', { placeholder: '巡检应用' });
+    const workingDirectory = addField('workingDirectory', '保存目录', {
+      wide: true
+    });
+    workingDirectory.input.readOnly = true;
+    const pathRow = document.createElement('span');
+    pathRow.className = 'fleetdock-welcome-path-row';
+    const browseButton = document.createElement('button');
+    browseButton.type = 'button';
+    browseButton.dataset.action = 'browse';
+    browseButton.textContent = '选择…';
+    workingDirectory.input.replaceWith(pathRow);
+    pathRow.append(workingDirectory.input, browseButton);
+    addField('version', '版本', { value: '0.1.0' });
+    addField('entryFile', '入口文件', { value: 'main.py' });
+    addField('description', '说明', {
+      wide: true,
+      multiline: true,
+      rows: 3
+    });
+
+    const status = document.createElement('div');
+    status.className = 'fleetdock-welcome-status';
+    status.dataset.role = 'status';
+    const actions = document.createElement('div');
+    actions.className = 'fleetdock-welcome-actions';
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.dataset.action = 'cancel';
+    cancelButton.textContent = '取消';
+    const createButton = document.createElement('button');
+    createButton.type = 'button';
+    createButton.dataset.action = 'create';
+    createButton.textContent = '创建并打开';
+    actions.append(cancelButton, createButton);
+    dialog.append(heading, grid, status, actions);
+    modal.appendChild(dialog);
     document.body.appendChild(modal);
 
-    const field = name => modal.querySelector(`[data-field="${name}"]`);
-    const status = modal.querySelector('[data-role="status"]');
-    modal.querySelector('[data-action="cancel"]').onclick = () =>
-      modal.remove();
-    modal.querySelector('[data-action="browse"]').onclick = async () => {
+    const field = name => fields[name];
+    cancelButton.onclick = () => modal.remove();
+    browseButton.onclick = async () => {
       const selected = await window.electronAPI.selectDirectoryPath(
         field('workingDirectory').value
       );
@@ -80,7 +148,7 @@
         field('workingDirectory').value = selected;
       }
     };
-    modal.querySelector('[data-action="create"]').onclick = async event => {
+    createButton.onclick = async event => {
       const button = event.currentTarget;
       button.disabled = true;
       status.textContent = '';

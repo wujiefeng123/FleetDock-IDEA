@@ -8,16 +8,27 @@
   gap: 10px;
 }
 
-.fleetdock-welcome-badge {
+.fleetdock-welcome-action .fleetdock-welcome-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   width: 28px;
   height: 28px;
+  margin-right: 0;
+  padding-top: 0;
   border-radius: 8px;
   color: #fff;
   background: linear-gradient(135deg, #1677ff, #00a6a6);
   font-weight: 700;
+}
+
+.fleetdock-welcome-action .fleetdock-welcome-label {
+  width: auto;
+  height: auto;
+  margin-right: 0;
+  padding-top: 0;
+  white-space: nowrap;
 }
 
 .fleetdock-welcome-modal {

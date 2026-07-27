@@ -57,6 +57,7 @@ Each layer must:
 - preserve upstream dependency versions;
 - avoid whole-file replacement of upstream core modules;
 - keep IPC sender validation intact;
+- preserve upstream renderer security policies, including Trusted Types;
 - scope process cleanup to resources created by FleetDock;
 - pass the checks relevant to that layer before the next layer is accepted.
 

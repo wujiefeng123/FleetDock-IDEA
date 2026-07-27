@@ -16,15 +16,23 @@ export class FleetDockWelcomeInjector {
       if (webContents.isDestroyed()) {
         return;
       }
-      this._cssKey = await webContents.insertCSS(
-        this._readAsset('fleetdock-welcome-extension.css')
-      );
+      if (!this._cssKey) {
+        this._cssKey = await webContents.insertCSS(
+          this._readAsset('fleetdock-welcome-extension.css')
+        );
+      }
       await webContents.executeJavaScript(
         this._readAsset('fleetdock-welcome-extension.js'),
         true
       );
     };
     webContents.on('dom-ready', this._inject);
+    // [UAV-IDE MODIFY] WelcomeView may finish loading before SessionWindow
+    // publishes the extension hook, so inject immediately when DOM-ready was
+    // already missed.
+    if (!webContents.isLoadingMainFrame()) {
+      void this._inject();
+    }
     webContents.once('destroyed', () => {
       this._webContents = undefined;
       this._inject = undefined;

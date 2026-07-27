@@ -1,6 +1,15 @@
 // [UAV-IDE MODIFY] Provide a right-side FleetDock command center so UAV workflows stay beside, not inside, the code editor.
 (function () {
+  if (window.__fleetDockCommandCenterInstalled) {
+    return;
+  }
   const api = window.electronAPI || {};
+  if (!document.body || typeof api.getSkyLabWorkspaceContext !== 'function') {
+    return;
+  }
+  // [UAV-IDE MODIFY] Do not suppress the dom-ready retry if an early
+  // injection ran against the pre-navigation document.
+  window.__fleetDockCommandCenterInstalled = true;
   const STORAGE_OPEN = 'jld-skylab-command-center-open';
   const STORAGE_FIRST_OPEN_PREFIX = 'jld-skylab-command-center-first-open:';
   const SIMULATION_START_LOCK_STATES = new Set([
