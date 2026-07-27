@@ -1,0 +1,39 @@
+{
+  "base-robot-config": "robot_quadrotor_px4_sitl_wsl2.jsonc",
+  "additional-sensors": [
+    {
+      "id": "FrontDepthCamera",
+      "type": "camera",
+      "enabled": true,
+      "parent-link": "Frame",
+      "capture-interval": 0.05,
+      "capture-settings": [
+        {
+          "image-type": 0,
+          "width": 640,
+          "height": 480,
+          "fov-degrees": 90,
+          "capture-enabled": true,
+          "streaming-enabled": true,
+          "pixels-as-float": false,
+          "compress": false,
+          "target-gamma": 2.5
+        },
+        {
+          "image-type": 2,
+          "width": 640,
+          "height": 480,
+          "fov-degrees": 90,
+          "capture-enabled": true,
+          "streaming-enabled": true,
+          "pixels-as-float": true,
+          "compress": false
+        }
+      ],
+      "origin": {
+        "xyz": "0.45 0 0",
+        "rpy-deg": "0 0 0"
+      }
+    }
+  ]
+}

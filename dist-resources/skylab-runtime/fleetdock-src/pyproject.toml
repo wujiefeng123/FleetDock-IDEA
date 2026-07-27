@@ -1,0 +1,143 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleetdock"
+version = "0.3.0"
+description = "用于统一协同控制无人机、机器狗和其他设备的通用 Python SDK。"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "FleetDock" }
+]
+license = "MIT"
+keywords = ["无人机", "机器人", "SDK", "设备编队", "适配器"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+px4 = ["mavsdk>=3.15.3"]
+dji-cloud = [
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+]
+dji = [
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+]
+# Unitree 真机适配器尚未实现；保留为显式试验入口，不加入聚合安装组。
+unitree = ["unitree-sdk2>=1.0.1"]
+projectairsim = [
+  "projectairsim==0.2.0",
+]
+gstreamer = [
+  "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
+  "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
+]
+projectairsim-rtsp = [
+  "projectairsim==0.2.0",
+  "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
+  "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
+]
+vision = [
+  "numpy>=1.26.0",
+  "opencv-python>=4.9.0",
+  "Pillow>=10.0.0",
+]
+
+integrations-lite = [
+  "mavsdk>=3.15.3",
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+]
+airsim = [
+  "projectairsim==0.2.0",
+]
+integrations = [
+  "mavsdk>=3.15.3",
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+  "projectairsim==0.2.0",
+]
+dev = [
+  "build>=1.5.0",
+  "coverage>=7.15.0",
+  "mypy>=2.2.0",
+  "ruff>=0.15.21",
+]
+full-prod = [
+  "mavsdk>=3.15.3",
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+  "projectairsim==0.2.0",
+  "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
+  "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
+  "numpy>=1.26.0",
+  "opencv-python>=4.9.0",
+  "Pillow>=10.0.0",
+]
+full-dev = [
+  "mavsdk>=3.15.3",
+  "httpx>=0.28.1",
+  "paho-mqtt>=2.1.0",
+  "projectairsim==0.2.0",
+  "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
+  "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
+  "numpy>=1.26.0",
+  "opencv-python>=4.9.0",
+  "Pillow>=10.0.0",
+  "build>=1.5.0",
+  "coverage>=7.15.0",
+  "mypy>=2.2.0",
+  "ruff>=0.15.21",
+]
+
+[project.urls]
+Documentation = "https://github.com/FleetDock/FleetDock#readme"
+Source = "https://github.com/FleetDock/FleetDock"
+Issues = "https://github.com/FleetDock/FleetDock/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fleetdock*"]
+
+[tool.setuptools.package-data]
+fleetdock = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"fleetdock/__init__.py" = ["F401"]
+"fleetdock/events.py" = ["F401", "F405"]
+"fleetdock/fleet.py" = ["F401"]
+
+[tool.coverage.run]
+source = ["fleetdock"]
+branch = false
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["fleetdock"]
+follow_imports = "normal"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

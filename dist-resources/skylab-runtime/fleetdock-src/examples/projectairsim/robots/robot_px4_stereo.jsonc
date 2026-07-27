@@ -1,0 +1,53 @@
+{
+  "base-robot-config": "robot_quadrotor_px4_sitl_wsl2.jsonc",
+  "additional-sensors": [
+    {
+      "id": "StereoLeft",
+      "type": "camera",
+      "enabled": true,
+      "parent-link": "Frame",
+      "capture-interval": 0.1,
+      "capture-settings": [
+        {
+          "image-type": 0,
+          "width": 640,
+          "height": 480,
+          "fov-degrees": 90,
+          "capture-enabled": true,
+          "streaming-enabled": true,
+          "pixels-as-float": false,
+          "compress": false,
+          "target-gamma": 2.5
+        }
+      ],
+      "origin": {
+        "xyz": "0.45 -0.06 0",
+        "rpy-deg": "0 0 0"
+      }
+    },
+    {
+      "id": "StereoRight",
+      "type": "camera",
+      "enabled": true,
+      "parent-link": "Frame",
+      "capture-interval": 0.1,
+      "capture-settings": [
+        {
+          "image-type": 0,
+          "width": 640,
+          "height": 480,
+          "fov-degrees": 90,
+          "capture-enabled": true,
+          "streaming-enabled": true,
+          "pixels-as-float": false,
+          "compress": false,
+          "target-gamma": 2.5
+        }
+      ],
+      "origin": {
+        "xyz": "0.45 0.06 0",
+        "rpy-deg": "0 0 0"
+      }
+    }
+  ]
+}

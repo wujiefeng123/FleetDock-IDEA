@@ -16,7 +16,35 @@ describe('labview preload', () => {
   it('exposes exactly the documented electronAPI keys', async () => {
     const api = await load();
     expect(Object.keys(api).sort()).toEqual(
-      ['getServerInfo', 'broadcastLabUIReady'].sort()
+      [
+        'getServerInfo',
+        'broadcastLabUIReady',
+        // [UAV-IDE MODIFY] Explicit FleetDock renderer capability allowlist.
+        'showApplicationSettings',
+        'showCodeAppCenterPublish',
+        'openDeviceManager',
+        'getSkyLabWorkspaceContext',
+        'saveApplicationSettings',
+        'loadDroneDevices',
+        'saveDroneDevice',
+        'deleteDroneDevice',
+        'checkUavSimulationEnvironment',
+        'listUavSimulationScenes',
+        'saveUavSimulationConfig',
+        'addUavSimulationSceneDirectory',
+        'updateUavSimulationScene',
+        'deleteUavSimulationScene',
+        'startUavSimulation',
+        'stopUavSimulation',
+        'getUavSimulationStatus',
+        'getUavSimulationCameraStreams',
+        'createUavSimulationWebRtcSession',
+        'closeUavSimulationWebRtcSession',
+        'executeUavSimulationCommand',
+        'getFleetDockHudSnapshot',
+        'runFleetDockDebugCommand',
+        'openFleetDockHudWindows'
+      ].sort()
     );
   });
 

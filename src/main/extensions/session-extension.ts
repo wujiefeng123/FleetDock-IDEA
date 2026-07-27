@@ -21,8 +21,13 @@ export interface ISessionExtensionContext {
   isDarkTheme: boolean;
   getSessionConfig: () => SessionConfig | undefined;
   getWorkspaceSettings: () => WorkspaceSettings;
+  setWorkspaceSettings: (settings: WorkspaceSettings) => void;
   getWelcomeWebContents: () => WebContents | undefined;
   getLabWebContents: () => WebContents | undefined;
+  getServerPythonPath: () => string | undefined;
+  restartSessionInPythonEnvironment: (pythonPath: string) => void;
+  notifySessionConfigChanged: () => void;
+  openSession: (sessionConfig: SessionConfig) => Promise<void>;
 }
 
 export interface ISessionExtension {

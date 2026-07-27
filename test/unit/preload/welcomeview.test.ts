@@ -30,7 +30,14 @@ describe('welcomeview preload', () => {
         'onSetNewsList',
         'onSetNotificationMessage',
         'onEnableLocalServerActions',
-        'onInstallBundledPythonEnvStatus'
+        'onInstallBundledPythonEnvStatus',
+        // [UAV-IDE MODIFY] Explicit FleetDock welcome capability allowlist.
+        'createNewApplication',
+        'pickWaypoint',
+        'pickRoute',
+        'loadDroneDevices',
+        'selectDirectoryPath',
+        'selectFilePath'
       ].sort()
     );
   });

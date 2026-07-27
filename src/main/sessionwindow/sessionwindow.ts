@@ -152,8 +152,17 @@ export class SessionWindow implements IDisposable {
         isDarkTheme: this._isDarkTheme,
         getSessionConfig: () => this._sessionConfig,
         getWorkspaceSettings: () => this._wsSettings,
+        setWorkspaceSettings: settings => {
+          this._wsSettings = settings;
+        },
         getWelcomeWebContents: () => this._welcomeView?.view?.webContents,
-        getLabWebContents: () => this._labView?.view?.webContents
+        getLabWebContents: () => this._labView?.view?.webContents,
+        getServerPythonPath: () =>
+          this._server?.server?.info?.environment?.path,
+        restartSessionInPythonEnvironment: pythonPath =>
+          this._restartServerInPythonEnvironment(pythonPath),
+        notifySessionConfigChanged: () => this._sessionConfigChanged.emit(),
+        openSession: sessionConfig => this.openSession(sessionConfig)
       }
     );
     this._extensionHost.activate();

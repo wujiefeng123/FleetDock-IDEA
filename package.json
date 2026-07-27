@@ -1,7 +1,7 @@
 {
-  "name": "jupyterlab-desktop",
+  "name": "skylab-ide",
   "version": "4.6.2-1",
-  "description": "JupyterLab Desktop",
+  "description": "FleetDock IDEA desktop workspace for low-altitude intelligence and UAV application development.",
   "main": "./build/out/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -33,12 +33,14 @@
     "update_workflow_conda_lock": "node scripts/rm.js workflow_env/*.lock && cd workflow_env && conda-lock --kind explicit -f publish_env.yaml && cd -",
     "update_conda_lock": "node scripts/rm.js env_installer/*.lock && cd env_installer && conda-lock --kind explicit -f jlab_server.yaml && cd -",
     "clean_env_installer": "node scripts/rm.js ./env_installer/jlab_server.tar.gz && node scripts/rm.js ./env_installer/jlab_server",
-    "create_env_installer": "yarn clean_env_installer && conda-lock install --no-validate-platform --prefix ./env_installer/jlab_server ./env_installer/conda-${ENV_PLATFORM}.lock && yarn copy_extras_to_bundled_env && conda pack -p ./env_installer/jlab_server -o ./env_installer/jlab_server.tar.gz",
+    "create_env_installer": "yarn clean_env_installer && conda-lock install --no-validate-platform --prefix ./env_installer/jlab_server ./env_installer/conda-${ENV_PLATFORM}.lock && yarn copy_extras_to_bundled_env && yarn install_fleetdock_to_bundled_env && yarn install_projectairsim_to_bundled_env && conda pack -p ./env_installer/jlab_server -o ./env_installer/jlab_server.tar.gz",
     "create_env_installer:linux-64": "ENV_PLATFORM=linux-64 yarn create_env_installer",
     "create_env_installer:linux-aarch64": "ENV_PLATFORM=linux-aarch64 yarn create_env_installer",
     "create_env_installer:osx-64": "ENV_PLATFORM=osx-64 yarn create_env_installer",
     "create_env_installer:osx-arm64": "ENV_PLATFORM=osx-arm64 yarn create_env_installer",
-    "create_env_installer:win-64": "yarn clean_env_installer && conda-lock install --no-validate-platform --prefix ./env_installer/jlab_server ./env_installer/conda-win-64.lock && yarn copy_extras_to_bundled_env && conda pack -p ./env_installer/jlab_server -o ./env_installer/jlab_server.tar.gz",
+    "create_env_installer:win-64": "yarn clean_env_installer && conda-lock install --no-validate-platform --prefix ./env_installer/jlab_server ./env_installer/conda-win-64.lock && yarn copy_extras_to_bundled_env && yarn install_fleetdock_to_bundled_env && yarn install_projectairsim_to_bundled_env && conda pack -p ./env_installer/jlab_server -o ./env_installer/jlab_server.tar.gz",
+    "install_fleetdock_to_bundled_env": "node scripts/install-fleetdock.js",
+    "install_projectairsim_to_bundled_env": "node scripts/install-projectairsim.js",
     "extract_env_installer:osx": "node scripts/rm.js env_installer/jlab_server_extracted && cd ./env_installer && mkdir jlab_server_extracted && tar -xzf jlab_server.tar.gz -C jlab_server_extracted && cd -",
     "extract_env_installer:osx-64": "yarn extract_env_installer:osx",
     "extract_env_installer:osx-arm64": "yarn extract_env_installer:osx",
@@ -57,8 +59,8 @@
     "update-ufuzzy": "shx cp node_modules/@leeoniya/ufuzzy/dist/uFuzzy.iife.min.js src/assets/"
   },
   "build": {
-    "appId": "org.jupyter.jupyterlab-desktop",
-    "productName": "JupyterLab",
+    "appId": "com.skylab.ide",
+    "productName": "FleetDock IDEA",
     "artifactName": "${productName}.${ext}",
     "directories": {
       "buildResources": "dist-resources"
@@ -73,7 +75,15 @@
     ],
     "extraResources": [
       "env_installer/jlab_server.tar.gz",
-      "env_installer/sign*.txt"
+      "env_installer/sign*.txt",
+      {
+        "from": "dist-resources/skylab-runtime",
+        "to": "skylab-runtime"
+      },
+      {
+        "from": "dist-resources/skylab-simulation",
+        "to": "skylab-simulation"
+      }
     ],
     "afterSign": "scripts/notarize.js",
     "linux": {
@@ -128,6 +138,7 @@
       "oneClick": "false",
       "artifactName": "${productName}-Setup.${ext}",
       "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
       "license": "LICENSE",
       "language": "1033",
       "installerSidebar": "installerSidebar.bmp",

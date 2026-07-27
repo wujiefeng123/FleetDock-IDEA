@@ -29,6 +29,10 @@ import { parseCLIArgs } from './cli';
 import { getPythonEnvsDirectory, runCommandInEnvironment } from './env';
 import { ThemedWindow } from './dialog/themedwindow';
 import { appData } from './config/appdata';
+import {
+  configureFleetDockApplicationBrand,
+  prepareFleetDockUserConfiguration
+} from './fleetdock/application-bootstrap';
 
 let jupyterApp: JupyterApplication;
 let fileToOpenInMainInstance = '';
@@ -129,6 +133,9 @@ app.setAboutPanelOptions({
   website: 'https://jupyter.org/about.html',
   copyright: `© 2015-${thisYear}  Project Jupyter Contributors`
 });
+// [UAV-IDE MODIFY] Product branding is applied by the isolated FleetDock
+// application extension after upstream defaults are established.
+configureFleetDockApplicationBrand();
 
 // when a file is double clicked or dropped on the app icon on OS,
 // this method is called
@@ -224,6 +231,9 @@ app.on('ready', async () => {
     await handleMultipleAppInstances();
     await updateBundledPythonEnvInstallation();
     redirectConsoleToLog();
+    // [UAV-IDE MODIFY] Persist FleetDock menu/page configuration without
+    // changing JupyterLab Desktop's upstream configuration implementation.
+    prepareFleetDockUserConfiguration();
     setApplicationMenu();
     setupJLabCommand();
     createPythonEnvsDirectory();

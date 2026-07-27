@@ -1,0 +1,28 @@
+{
+  "base-robot-config": "robot_quadrotor_px4_sitl_wsl2.jsonc",
+  "additional-sensors": [
+    {
+      "id": "lidar1",
+      "type": "lidar",
+      "enabled": true,
+      "parent-link": "Frame",
+      "number-of-channels": 16,
+      "range": 100,
+      "points-per-second": 100000,
+      "horizontal-rotation-frequency": 10,
+      "horizontal-fov-start-deg": 0,
+      "horizontal-fov-end-deg": 360,
+      "vertical-fov-upper-deg": 15,
+      "vertical-fov-lower-deg": -15,
+      "disable-self-hits": true,
+      "draw-debug-points": false,
+      "origin": {
+        "xyz": "0 0 -0.2",
+        "rpy-deg": "0 0 0"
+      },
+      "report-point-cloud": true,
+      "report-azimuth-elevation-range": false,
+      "report-no-return-points": false
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SDK 注释审校"
+  short_description: "检查并优化 FleetDock SDK 公共接口的中文注释说明"
+  default_prompt: "Use $sdk-comment-auditor to inspect FleetDock SDK public APIs and improve missing or unclear Chinese docstrings."

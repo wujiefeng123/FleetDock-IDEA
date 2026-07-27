@@ -1,0 +1,4 @@
+interface:
+  display_name: "FleetDock 质量审计"
+  short_description: "检查新手体验、协议隔离、跨设备编排与产品化质量门禁"
+  default_prompt: "使用 $fleetdock-quality-auditor 对当前 FleetDock 仓库执行完整质量审计并输出分级报告。"

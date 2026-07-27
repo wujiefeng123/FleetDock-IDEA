@@ -1,0 +1,4 @@
+{
+  "base-robot-config": "robot_quadrotor_px4_sitl_wsl2.jsonc",
+  "additional-sensors": []
+}

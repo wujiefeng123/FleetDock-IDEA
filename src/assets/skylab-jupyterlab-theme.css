@@ -1,0 +1,471 @@
+/* [UAV-IDE MODIFY] Apply the FleetDock IDEA light shell skin to JupyterLab without changing editor behavior. */
+:root {
+  --skylab-bg: #f6f8fb;
+  --skylab-bg-soft: #eef6ff;
+  --skylab-surface: rgba(255, 255, 255, 0.94);
+  --skylab-surface-solid: #ffffff;
+  --skylab-border: #e2e8f0;
+  --skylab-border-strong: #cbd5e1;
+  --skylab-text: #111827;
+  --skylab-muted: #64748b;
+  --skylab-blue: #2563eb;
+  --skylab-blue-soft: rgba(37, 99, 235, 0.1);
+  --skylab-cyan-soft: rgba(6, 182, 212, 0.12);
+  --skylab-file-bg: linear-gradient(180deg, #eef6ff 0%, #ffffff 56%);
+  --skylab-menu-height: 36px;
+  --skylab-tab-height: 36px;
+  --skylab-radius: 10px;
+  --skylab-radius-sm: 8px;
+  --skylab-radius-lg: 12px;
+  --skylab-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --skylab-shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --jp-brand-color0: #1d4ed8;
+  --jp-brand-color1: #2563eb;
+  --jp-brand-color2: #3b82f6;
+  --jp-brand-color3: #dbeafe;
+  --jp-layout-color0: #f6f8fb;
+  --jp-layout-color1: #ffffff;
+  --jp-layout-color2: #eef6ff;
+  --jp-layout-color3: #eaf2ff;
+  --jp-layout-color4: #dbeafe;
+  --jp-border-color0: #cbd5e1;
+  --jp-border-color1: #dbe7f3;
+  --jp-border-color2: #e2e8f0;
+  --jp-ui-font-color1: #111827;
+  --jp-ui-font-color2: #64748b;
+  --jp-ui-font-color3: #94a3b8;
+  --jp-rendermime-error-background: #fef2f2;
+}
+
+body[data-jp-theme-light='false'],
+body[data-jp-theme-name*='Dark'] {
+  --skylab-bg: #0f172a;
+  --skylab-bg-soft: #111827;
+  --skylab-surface: rgba(30, 41, 59, 0.94);
+  --skylab-surface-solid: #1e293b;
+  --skylab-border: #334155;
+  --skylab-border-strong: #475569;
+  --skylab-text: #e5e7eb;
+  --skylab-muted: #94a3b8;
+  --skylab-blue-soft: rgba(59, 130, 246, 0.16);
+  --skylab-cyan-soft: rgba(34, 211, 238, 0.14);
+  --skylab-file-bg: linear-gradient(180deg, #172033 0%, #111827 58%);
+  --skylab-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+  --skylab-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --jp-layout-color0: #0f172a;
+  --jp-layout-color1: #111827;
+  --jp-layout-color2: #1e293b;
+  --jp-layout-color3: #334155;
+  --jp-layout-color4: #475569;
+  --jp-border-color0: #475569;
+  --jp-border-color1: #334155;
+  --jp-border-color2: #1e293b;
+  --jp-ui-font-color1: #e5e7eb;
+  --jp-ui-font-color2: #94a3b8;
+  --jp-ui-font-color3: #64748b;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.18);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.34);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+body[data-jp-theme-light='false'] *::-webkit-scrollbar-thumb,
+body[data-jp-theme-name*='Dark'] *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.24);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+body[data-jp-theme-light='false'] *::-webkit-scrollbar-thumb:hover,
+body[data-jp-theme-name*='Dark'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.42);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+body,
+#jp-main-content-panel,
+.jp-LabShell,
+.jp-MainAreaWidget,
+.lm-DockPanel {
+  background: var(--skylab-bg) !important;
+}
+
+#jp-top-panel,
+#jp-top-panel > .lm-Widget,
+#jp-top-panel > .p-Widget,
+#jp-top-panel .jp-MenuBar,
+#jp-top-panel .lm-MenuBar,
+#jp-top-panel .lm-MenuBar-content,
+#jp-top-panel .p-MenuBar-content,
+.jp-MenuBar,
+.jp-MenuBar .lm-MenuBar-content,
+.jp-MenuBar .p-MenuBar-content {
+  background: #eef6ff !important;
+}
+
+/* [UAV-IDE MODIFY] Hide the upstream Jupyter menu mark so the injected FleetDock logo is the only brand mark in the workspace chrome. */
+#jp-top-panel .jp-JupyterIcon,
+#jp-top-panel .jp-JupyterIcon-color,
+#jp-top-panel .jp-JupyterIcon-color[fill],
+#jp-top-panel .jp-LogoIcon,
+#jp-top-panel .jp-LogoIcon-color,
+#jp-top-panel [class*='JupyterIcon'],
+#jp-top-panel [class*='LogoIcon'],
+.jp-MenuBar .jp-JupyterIcon,
+.jp-MenuBar .jp-JupyterIcon-color,
+.jp-MenuBar .jp-JupyterIcon-color[fill],
+.jp-MenuBar .jp-LogoIcon,
+.jp-MenuBar .jp-LogoIcon-color,
+.jp-MenuBar [class*='JupyterIcon'],
+.jp-MenuBar [class*='LogoIcon'] {
+  display: none !important;
+  opacity: 0 !important;
+  filter: none;
+}
+
+#jp-top-panel {
+  position: relative;
+  min-height: var(--skylab-menu-height);
+  border-bottom: 1px solid var(--skylab-border) !important;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.jp-MenuBar {
+  position: relative;
+  min-height: var(--skylab-menu-height);
+  background: #eef6ff !important;
+  border-bottom: 0 !important;
+  color: var(--skylab-text) !important;
+  box-shadow: none;
+  padding: 0 8px 0 6px !important;
+}
+
+/* [UAV-IDE MODIFY] Style the injected FleetDock app logo that replaces the upstream Jupyter static icon. */
+.jld-skylab-menu-logo {
+  position: absolute;
+  left: 6px;
+  top: 7px;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0f172a, #2563eb 62%, #06b6d4);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.jld-skylab-menu-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.jld-skylab-menu-logo:empty::after {
+  content: 'S';
+  color: #fff;
+  font: 800 14px/22px -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial,
+    sans-serif;
+  text-align: center;
+}
+
+body[data-jp-theme-light='false'] .jp-MenuBar,
+body[data-jp-theme-light='false'] #jp-top-panel,
+body[data-jp-theme-light='false'] #jp-top-panel > .lm-Widget,
+body[data-jp-theme-light='false'] #jp-top-panel > .p-Widget,
+body[data-jp-theme-light='false'] #jp-top-panel .jp-MenuBar,
+body[data-jp-theme-light='false'] #jp-top-panel .lm-MenuBar,
+body[data-jp-theme-light='false'] #jp-top-panel .lm-MenuBar-content,
+body[data-jp-theme-light='false'] #jp-top-panel .p-MenuBar-content,
+body[data-jp-theme-light='false'] .jp-MenuBar .lm-MenuBar-content,
+body[data-jp-theme-light='false'] .jp-MenuBar .p-MenuBar-content,
+body[data-jp-theme-name*='Dark'] .jp-MenuBar,
+body[data-jp-theme-name*='Dark'] #jp-top-panel,
+body[data-jp-theme-name*='Dark'] #jp-top-panel > .lm-Widget,
+body[data-jp-theme-name*='Dark'] #jp-top-panel > .p-Widget,
+body[data-jp-theme-name*='Dark'] #jp-top-panel .jp-MenuBar,
+body[data-jp-theme-name*='Dark'] #jp-top-panel .lm-MenuBar,
+body[data-jp-theme-name*='Dark'] #jp-top-panel .lm-MenuBar-content,
+body[data-jp-theme-name*='Dark'] #jp-top-panel .p-MenuBar-content {
+  background: #172033 !important;
+}
+
+body[data-jp-theme-light='false'] .jld-skylab-menu-logo,
+body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb 62%, #06b6d4);
+}
+
+.jp-MenuBar .lm-MenuBar-item {
+  height: 28px !important;
+  margin: 4px 2px !important;
+  border-radius: var(--skylab-radius-sm);
+  color: var(--skylab-text) !important;
+  line-height: 28px;
+  padding: 0 9px;
+}
+
+.jp-MenuBar .lm-MenuBar-item.lm-mod-active,
+#jp-top-panel .lm-MenuBar-item.lm-mod-active,
+.jp-MenuBar .lm-MenuBar-item.lm-mod-current,
+#jp-top-panel .lm-MenuBar-item.lm-mod-current,
+.jp-MenuBar .lm-MenuBar-item.lm-mod-selected,
+#jp-top-panel .lm-MenuBar-item.lm-mod-selected,
+.jp-MenuBar .lm-MenuBar-item:hover,
+#jp-top-panel .lm-MenuBar-item:hover {
+  background: var(--skylab-blue-soft) !important;
+  color: var(--skylab-blue) !important;
+}
+
+/* [UAV-IDE MODIFY] Override Lumino's gray selected menu label backgrounds so top menu states stay on the FleetDock blue theme. */
+.jp-MenuBar .lm-MenuBar-item.lm-mod-active .lm-MenuBar-itemLabel,
+#jp-top-panel .lm-MenuBar-item.lm-mod-active .lm-MenuBar-itemLabel,
+.jp-MenuBar .lm-MenuBar-item.lm-mod-current .lm-MenuBar-itemLabel,
+#jp-top-panel .lm-MenuBar-item.lm-mod-current .lm-MenuBar-itemLabel,
+.jp-MenuBar .lm-MenuBar-item.lm-mod-selected .lm-MenuBar-itemLabel,
+#jp-top-panel .lm-MenuBar-item.lm-mod-selected .lm-MenuBar-itemLabel,
+.jp-MenuBar .lm-MenuBar-item:hover .lm-MenuBar-itemLabel,
+#jp-top-panel .lm-MenuBar-item:hover .lm-MenuBar-itemLabel {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.lm-Menu,
+.jp-ContextMenu {
+  border: 1px solid var(--skylab-border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--skylab-shadow);
+}
+
+.lm-Menu .lm-Menu-item.lm-mod-active {
+  background: var(--skylab-blue-soft);
+  color: var(--skylab-blue);
+}
+
+.jp-SideBar {
+  background: var(--skylab-surface) !important;
+  border-color: var(--skylab-border) !important;
+  padding-top: 4px;
+}
+
+.jp-SideBar .lm-TabBar-tab {
+  margin: 6px 4px;
+  border-radius: var(--skylab-radius);
+  color: var(--skylab-muted);
+}
+
+.jp-SideBar .lm-TabBar-tab.lm-mod-current,
+.jp-SideBar .lm-TabBar-tab:hover {
+  background: var(--skylab-blue-soft) !important;
+  color: var(--skylab-blue) !important;
+}
+
+.jp-SideBar .lm-TabBar-tabIcon,
+.jp-SideBar .jp-Icon {
+  color: inherit;
+}
+
+.jp-FileBrowser {
+  background: var(--skylab-file-bg) !important;
+  color: var(--skylab-text) !important;
+  border-right: 1px solid var(--skylab-border) !important;
+}
+
+.jp-FileBrowser-toolbar {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  padding: 8px 8px 4px;
+}
+
+.jp-FileBrowser-toolbar .jp-ToolbarButtonComponent,
+.jp-Toolbar .jp-ToolbarButtonComponent {
+  border-radius: var(--skylab-radius-sm);
+  color: var(--skylab-muted);
+}
+
+.jp-FileBrowser-toolbar .jp-ToolbarButtonComponent:hover,
+.jp-Toolbar .jp-ToolbarButtonComponent:hover {
+  background: var(--skylab-blue-soft) !important;
+  color: var(--skylab-blue) !important;
+}
+
+.jp-FileBrowser-filterBox input,
+.jp-InputGroup input {
+  border: 1px solid var(--skylab-border) !important;
+  border-radius: var(--skylab-radius);
+  background: var(--skylab-surface-solid) !important;
+  color: var(--skylab-text) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.jp-FileBrowser-filterBox input:focus,
+.jp-InputGroup input:focus {
+  border-color: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.16);
+}
+
+.jp-DirListing-header {
+  background: transparent !important;
+  border-color: var(--skylab-border) !important;
+  color: var(--skylab-muted) !important;
+  font-weight: 700;
+}
+
+.jp-DirListing-content {
+  background: transparent !important;
+  scrollbar-gutter: stable;
+  padding: 2px 2px 8px;
+}
+
+.jp-DirListing-item {
+  margin: 3px 6px;
+  border-radius: var(--skylab-radius);
+  color: var(--skylab-text);
+  min-height: 32px;
+}
+
+.jp-DirListing-item:hover {
+  background: var(--skylab-blue-soft) !important;
+}
+
+.jp-DirListing-item.jp-mod-selected {
+  background: var(--skylab-blue) !important;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.jp-DirListing-item.jp-mod-selected .jp-icon3,
+.jp-DirListing-item.jp-mod-selected .jp-icon-selectable[fill] {
+  color: #fff;
+  fill: #fff;
+}
+
+.lm-DockPanel-tabBar,
+.jp-NotebookPanel-toolbar,
+.jp-Toolbar {
+  background: var(--skylab-bg-soft) !important;
+  border-color: var(--skylab-border) !important;
+}
+
+.lm-DockPanel-tabBar {
+  min-height: 42px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--skylab-border) !important;
+}
+
+.jp-Toolbar {
+  min-height: 36px;
+}
+
+.lm-TabBar-tab {
+  border-radius: 9px 9px 0 0;
+}
+
+.lm-DockPanel-tabBar .lm-TabBar-tab {
+  min-height: var(--skylab-tab-height);
+  margin: 4px 2px 0;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--skylab-muted) !important;
+  padding: 0 10px;
+}
+
+.lm-DockPanel-tabBar .lm-TabBar-tab.lm-mod-current {
+  background: var(--skylab-surface-solid) !important;
+  border-color: var(--skylab-border) !important;
+  color: var(--skylab-text) !important;
+  box-shadow: 0 -2px 0 var(--skylab-blue) inset !important;
+}
+
+.lm-DockPanel-tabBar .lm-TabBar-tab:hover:not(.lm-mod-current) {
+  background: var(--skylab-blue-soft) !important;
+  color: var(--skylab-blue) !important;
+}
+
+.jp-NotebookPanel,
+.jp-CodeConsole,
+.jp-Document,
+.jp-FileEditor {
+  background: var(--skylab-surface-solid) !important;
+}
+
+.jp-MainAreaWidget > .jp-Toolbar,
+.jp-Document .jp-Toolbar {
+  background: #f8fbff !important;
+  border-bottom: 1px solid var(--skylab-border) !important;
+}
+
+.jp-MainAreaWidget,
+.jp-Document {
+  border: 1px solid var(--skylab-border) !important;
+  border-radius: var(--skylab-radius);
+  overflow: hidden;
+  box-shadow: var(--skylab-shadow-soft) !important;
+}
+
+.lm-DockPanel-widget {
+  background: var(--skylab-surface-solid) !important;
+}
+
+.jp-CodeMirrorEditor,
+.cm-editor,
+.jp-Editor {
+  background: #fff;
+}
+
+body[data-jp-theme-light='false'] .jp-CodeMirrorEditor,
+body[data-jp-theme-light='false'] .cm-editor,
+body[data-jp-theme-light='false'] .jp-Editor,
+body[data-jp-theme-name*='Dark'] .jp-CodeMirrorEditor,
+body[data-jp-theme-name*='Dark'] .cm-editor,
+body[data-jp-theme-name*='Dark'] .jp-Editor {
+  background: var(--jp-layout-color1, #111827);
+}
+
+.jp-RightPanel,
+.jp-RightSidebar {
+  background: var(--skylab-surface) !important;
+  border-color: var(--skylab-border) !important;
+}
+
+.jp-StatusBar,
+#jp-main-statusbar {
+  background: var(--skylab-surface) !important;
+  border-top: 1px solid var(--skylab-border) !important;
+  color: var(--skylab-muted) !important;
+  min-height: 28px;
+}
+
+.lm-SplitPanel-handle {
+  background: var(--skylab-border);
+}
+
+.jp-mod-dropTarget {
+  outline-color: rgba(37, 99, 235, 0.38);
+}

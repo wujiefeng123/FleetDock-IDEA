@@ -1,0 +1,94 @@
+.fleetdock-welcome-action {
+  margin-top: 10px;
+}
+
+.fleetdock-welcome-action a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fleetdock-welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #1677ff, #00a6a6);
+  font-weight: 700;
+}
+
+.fleetdock-welcome-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 45%);
+}
+
+.fleetdock-welcome-dialog {
+  width: min(620px, calc(100vw - 48px));
+  padding: 22px;
+  border: 1px solid var(--jp-border-color2, #d9d9d9);
+  border-radius: 10px;
+  color: var(--jp-ui-font-color1, #222);
+  background: var(--jp-layout-color1, #fff);
+  box-shadow: 0 16px 46px rgb(0 0 0 / 24%);
+}
+
+.fleetdock-welcome-dialog h2 {
+  margin: 0 0 16px;
+}
+
+.fleetdock-welcome-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.fleetdock-welcome-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fleetdock-welcome-field-wide {
+  grid-column: 1 / -1;
+}
+
+.fleetdock-welcome-field input,
+.fleetdock-welcome-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--jp-border-color2, #bbb);
+  border-radius: 4px;
+  color: inherit;
+  background: var(--jp-input-background, #fff);
+}
+
+.fleetdock-welcome-path-row {
+  display: flex;
+  gap: 8px;
+}
+
+.fleetdock-welcome-path-row input {
+  flex: 1;
+}
+
+.fleetdock-welcome-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.fleetdock-welcome-status {
+  min-height: 20px;
+  margin-top: 10px;
+  color: #d4380d;
+}

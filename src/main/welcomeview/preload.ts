@@ -1,5 +1,6 @@
 import electron = require('electron');
 import { EventTypeMain, EventTypeRenderer } from '../eventtypes';
+import { fleetDockWelcomePreloadApi } from '../fleetdock/welcome-preload-api';
 
 const { contextBridge, ipcRenderer, webUtils } = electron;
 
@@ -31,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       platform: process.platform
     };
   },
+  // [UAV-IDE MODIFY] Keep FleetDock welcome actions in the extension preload.
+  ...fleetDockWelcomePreloadApi,
   isDarkTheme: () => {
     return ipcRenderer.invoke(EventTypeMain.IsDarkTheme);
   },

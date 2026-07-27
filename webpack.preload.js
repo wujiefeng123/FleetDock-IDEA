@@ -11,14 +11,22 @@ const preloadFiles = [
   'aboutdialog/preload.js',
   'authdialog/preload.js',
   'dialog/preload.js',
+  // [UAV-IDE MODIFY] FleetDock extension-owned renderer bridges.
+  'appsettingsdialog/preload.js',
+  'codeappcenterdialog/preload.js',
+  'devicemanagerdialog/preload.js',
+  'fleetdock/hud-window-preload.js',
   'labview/preload.js',
   'settingsdialog/preload.js',
   'progressview/preload.js',
   'pythonenvdialog/preload.js',
   'pythonenvselectpopup/preload.js',
   'remoteserverselectdialog/preload.js',
+  'routepicker/preload.js',
   'titlebarview/preload.js',
+  'uavsimulation/ipc/uav-simulation-disconnect-preload.js',
   'updatedialog/preload.js',
+  'waypointpicker/preload.js',
   'welcomeview/preload.js'
 ];
 const entries = {};

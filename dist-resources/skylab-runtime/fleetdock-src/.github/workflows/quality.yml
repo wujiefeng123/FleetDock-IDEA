@@ -1,0 +1,28 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip build ruff mypy coverage
+      - run: python -m pip install -e .
+      - run: python -m ruff check fleetdock tests examples/quickstart
+      - run: python -m ruff check --select E,F,I fleetdock/api.py fleetdock/_exception_mapping.py tests/test_stable_api.py tests/test_product_maturity.py tests/test_device_lifecycle.py tests/test_quality_depth.py examples/quickstart
+      - run: python -m mypy
+      - run: python -m unittest discover -s tests
+      - run: python -m coverage run -m unittest discover -s tests
+      - run: python -m coverage report
+      - run: python -m build
+      - run: python -m pip install --force-reinstall --no-deps dist/*.whl
+      - run: python -c "import fleetdock, fleetdock.api; assert fleetdock.__version__"

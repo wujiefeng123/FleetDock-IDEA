@@ -1,0 +1,32 @@
+{
+  "base-robot-config": "robot_quadrotor_px4_sitl_wsl2.jsonc",
+  "additional-sensors": [
+    {
+      "id": "radar1",
+      "type": "radar",
+      "enabled": true,
+      "parent-link": "Frame",
+      "fov": {
+        "azimuth-max": 0.785,
+        "azimuth-min": -0.785,
+        "elevation-max": 0.35,
+        "elevation-min": -0.35,
+        "azimuth-resolution": 0.035,
+        "elevation-resolution": 0.035
+      },
+      "range-max": 150.0,
+      "range-resolution": 0.5,
+      "velocity-max": 50.0,
+      "velocity-resolution": 0.5,
+      "detection-interval": 0.05,
+      "track-interval": 0.2,
+      "rcs-adjust-factor": 0.1,
+      "draw-debug-points": false,
+      "origin": {
+        "xyz": "0.2 0 0",
+        "rpy-deg": "0 0 0"
+      },
+      "masks": []
+    }
+  ]
+}
