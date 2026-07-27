@@ -59,3 +59,44 @@ Each layer must:
 - keep IPC sender validation intact;
 - scope process cleanup to resources created by FleetDock;
 - pass the checks relevant to that layer before the next layer is accepted.
+
+## Upstream update procedure
+
+The FleetDock branch is based directly on the official `origin` remote. For a
+future JupyterLab Desktop update:
+
+```powershell
+git fetch origin
+git switch codex/fleetdock-upstream-migration
+git merge --no-ff origin/master
+```
+
+Resolve conflicts without copying an older upstream file over the newer one.
+Keep the new upstream implementation, then reapply only the small extension
+hook or FleetDock configuration at the conflict site. The expected review
+surface is intentionally limited to:
+
+- `src/main/app.ts`, `src/main/main.ts`, and
+  `src/main/sessionwindow/sessionwindow.ts` for lifecycle attachment;
+- `src/main/eventtypes.ts`, the two upstream preload entry points, and
+  `webpack.preload.js` for explicit IPC exposure;
+- `package.json` and the installer/brand files for FleetDock packaging;
+- the About dialog for the user-visible product name.
+
+After every upstream merge:
+
+1. Confirm `package.json` dependency and development-dependency versions and
+   `yarn.lock` match the new upstream unless a separately reviewed FleetDock
+   requirement exists.
+2. Run `yarn type-check`, `yarn build`, the unit tests, and the FleetDock
+   contract checks in `scripts/check-*`.
+3. Inspect the diff from the new upstream revision. FleetDock business logic
+   should remain in the isolated directories described above; a conflict must
+   not move it into an upstream core module.
+4. Build an unpacked application and manually verify application creation,
+   device management, simulation start/stop, and command-center injection.
+
+The packaged `skylab-runtime` file set deliberately excludes SDK tests,
+examples, CI configuration, and Codex development helpers. Those files remain
+in source control for SDK maintenance but are not copied into a FleetDock
+desktop release.

@@ -78,7 +78,16 @@
       "env_installer/sign*.txt",
       {
         "from": "dist-resources/skylab-runtime",
-        "to": "skylab-runtime"
+        "to": "skylab-runtime",
+        "filter": [
+          "fleetdock-src/fleetdock/**/*",
+          "fleetdock-src/pyproject.toml",
+          "fleetdock-src/README.md",
+          "fleetdock-src/LICENSE",
+          "fleetdock_ide_runtime/**/*",
+          "loaders/**/*",
+          "mediamtx/**/*"
+        ]
       },
       {
         "from": "dist-resources/skylab-simulation",
