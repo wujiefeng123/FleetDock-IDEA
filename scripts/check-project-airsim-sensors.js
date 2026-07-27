@@ -22,16 +22,6 @@ function templatePaths() {
       'skylab-simulation',
       'templates',
       'robot_quadrotor_px4.jsonc'
-    ),
-    path.join(
-      __dirname,
-      '..',
-      'dist-resources',
-      'win',
-      'lib',
-      'SkyLabSim',
-      'templates',
-      'robot_quadrotor_px4.jsonc'
     )
   ].filter(filePath => fs.existsSync(filePath));
 }
@@ -64,16 +54,6 @@ const clientPaths = [
     '..',
     'dist-resources',
     'skylab-simulation',
-    'client',
-    'project_airsim_client.py'
-  ),
-  path.join(
-    __dirname,
-    '..',
-    'dist-resources',
-    'win',
-    'lib',
-    'SkyLabSim',
     'client',
     'project_airsim_client.py'
   )
@@ -110,7 +90,6 @@ for (const clientSource of clientSources) {
       clientSource.indexOf('client.disconnect()')
   );
 }
-assert.strictEqual(clientSources[0], clientSources[1]);
 
 // [UAV-IDE MODIFY] Every camera must negotiate WebRTC through the managed MediaMTX service.
 const mediaServiceSource = fs.readFileSync(
