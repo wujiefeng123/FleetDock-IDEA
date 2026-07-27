@@ -66,6 +66,8 @@ import {
   validatePythonEnvironmentInstallDirectory,
   validateSystemPythonPath
 } from './env';
+import type { ISessionExtensionFactory } from './extensions/session-extension';
+import { fleetDockSessionExtensionFactory } from './fleetdock/session-extension';
 
 export interface IApplication {
   createNewEmptySession(): void;
@@ -186,6 +188,7 @@ class SessionWindowManager implements IDisposable {
       app: this._options.app,
       registry: this._options.registry,
       serverFactory: this._options.serverFactory,
+      extensionFactories: this._options.extensionFactories,
       contentView: contentView,
       sessionConfig,
       rect
@@ -257,6 +260,7 @@ namespace SessionWindowManager {
     app: JupyterApplication;
     registry: IRegistry;
     serverFactory: IServerFactory;
+    extensionFactories?: readonly ISessionExtensionFactory[];
   }
 }
 
@@ -272,7 +276,9 @@ export class JupyterApplication implements IApplication, IDisposable {
     this._sessionWindowManager = new SessionWindowManager({
       app: this,
       registry: this._registry,
-      serverFactory: this._serverFactory
+      serverFactory: this._serverFactory,
+      // [UAV-IDE MODIFY] Attach FleetDock through the generic extension host.
+      extensionFactories: [fleetDockSessionExtensionFactory]
     });
 
     // create a server in advance

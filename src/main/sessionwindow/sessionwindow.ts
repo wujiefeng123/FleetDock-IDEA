@@ -51,6 +51,10 @@ import { EventTypeMain } from '../eventtypes';
 import { EventManager } from '../eventmanager';
 import { runCommandInEnvironment } from '../env';
 import * as ejs from 'ejs';
+import {
+  ISessionExtensionFactory,
+  SessionExtensionHost
+} from '../extensions/session-extension';
 
 export enum ContentViewType {
   Welcome = 'welcome',
@@ -137,6 +141,23 @@ export class SessionWindow implements IDisposable {
     this._window.setMenuBarVisibility(false);
     this._window.show();
 
+    // [UAV-IDE MODIFY] Product features attach through a narrow, generic
+    // lifecycle contract instead of adding business logic to SessionWindow.
+    this._extensionHost = new SessionExtensionHost(
+      options.extensionFactories || [],
+      {
+        window: this._window,
+        eventManager: this._evm,
+        registry: this._registry,
+        isDarkTheme: this._isDarkTheme,
+        getSessionConfig: () => this._sessionConfig,
+        getWorkspaceSettings: () => this._wsSettings,
+        getWelcomeWebContents: () => this._welcomeView?.view?.webContents,
+        getLabWebContents: () => this._labView?.view?.webContents
+      }
+    );
+    this._extensionHost.activate();
+
     this._registerListeners();
     this._createProgressView();
     this._createEnvSelectPopup();
@@ -159,6 +180,7 @@ export class SessionWindow implements IDisposable {
       );
     }
 
+    await this._extensionHost.beforeCreateServer(serverOptions);
     const server = await this.serverFactory.createServer(serverOptions);
     this._server = server;
     await server.server.started;
@@ -306,22 +328,24 @@ export class SessionWindow implements IDisposable {
         this
       );
 
-      this._disposeSession().then(() => {
-        // _disposeSession only closes the labView. The persistent titlebar,
-        // progress and env-select views (and a still-mounted welcome view)
-        // keep their renderers alive on window close (electron/electron#42884),
-        // so close each one that is still alive.
-        const closeIfAlive = (wc?: Electron.WebContents) => {
-          if (wc && !wc.isDestroyed()) wc.close();
-        };
-        closeIfAlive(this._titleBarView?.view?.webContents);
-        closeIfAlive(this._progressView?.view?.view?.webContents);
-        closeIfAlive(this._envSelectPopup?.view?.view?.webContents);
-        closeIfAlive(this._welcomeView?.view?.webContents);
+      (this._extensionHost?.dispose() || Promise.resolve())
+        .then(() => this._disposeSession())
+        .then(() => {
+          // _disposeSession only closes the labView. The persistent titlebar,
+          // progress and env-select views (and a still-mounted welcome view)
+          // keep their renderers alive on window close (electron/electron#42884),
+          // so close each one that is still alive.
+          const closeIfAlive = (wc?: Electron.WebContents) => {
+            if (wc && !wc.isDestroyed()) wc.close();
+          };
+          closeIfAlive(this._titleBarView?.view?.webContents);
+          closeIfAlive(this._progressView?.view?.view?.webContents);
+          closeIfAlive(this._envSelectPopup?.view?.view?.webContents);
+          closeIfAlive(this._welcomeView?.view?.webContents);
 
-        this._disposePromise = null;
-        resolve();
-      });
+          this._disposePromise = null;
+          resolve();
+        });
     });
 
     return this._disposePromise;
@@ -347,6 +371,7 @@ export class SessionWindow implements IDisposable {
     welcomeView.load();
 
     this._welcomeView = welcomeView;
+    this._extensionHost.onWelcomeViewCreated(welcomeView.view.webContents);
   }
 
   private _createProgressView() {
@@ -422,6 +447,7 @@ export class SessionWindow implements IDisposable {
     });
 
     this._labView = labView;
+    this._extensionHost.onLabViewCreated(labView.view.webContents);
 
     this._labView.view.webContents.on('focus', () => {
       this._hideEnvSelectPopup();
@@ -1841,6 +1867,9 @@ export class SessionWindow implements IDisposable {
   private _sessionConfigChanged = new Signal<this, void>(this);
   private _evm = new EventManager();
   private _recentSessionRemovalByThis = false;
+  // [UAV-IDE MODIFY] Own optional product integrations outside core session
+  // coordination.
+  private _extensionHost: SessionExtensionHost;
 }
 
 export namespace SessionWindow {
@@ -1848,6 +1877,7 @@ export namespace SessionWindow {
     app: IApplication;
     serverFactory: IServerFactory;
     registry: IRegistry;
+    extensionFactories?: readonly ISessionExtensionFactory[];
     contentView: ContentViewType;
     sessionConfig?: SessionConfig;
     rect?: IRect;
