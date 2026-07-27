@@ -27,6 +27,7 @@ if (!fs.existsSync(path.join(sourcePath, 'pyproject.toml'))) {
   throw new Error(`FleetDock source package was not found at ${sourcePath}`);
 }
 
-execFileSync(pythonPath, ['-m', 'pip', 'install', `${sourcePath}[px4]`], {
+// [UAV-IDE MODIFY] Bundle every implemented FleetDock runtime integration, including Project AirSim RTSP/GStreamer.
+execFileSync(pythonPath, ['-m', 'pip', 'install', `${sourcePath}[full-prod]`], {
   stdio: 'inherit'
 });
