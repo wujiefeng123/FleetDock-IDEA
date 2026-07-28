@@ -34,6 +34,7 @@ export interface ISessionExtension {
   readonly id: string;
   activate?(): void;
   beforeCreateServer?(options: JupyterServer.IOptions): void | Promise<void>;
+  onTitleBarViewCreated?(webContents: WebContents): void | Promise<void>;
   onWelcomeViewCreated?(webContents: WebContents): void | Promise<void>;
   onLabViewCreated?(webContents: WebContents): void | Promise<void>;
   dispose?(): void | Promise<void>;
@@ -63,6 +64,13 @@ export class SessionExtensionHost {
     for (const extension of this._extensions) {
       await extension.beforeCreateServer?.(options);
     }
+  }
+
+  onTitleBarViewCreated(webContents: WebContents): void {
+    this._notify(
+      extension => extension.onTitleBarViewCreated?.(webContents),
+      'title bar view'
+    );
   }
 
   onWelcomeViewCreated(webContents: WebContents): void {

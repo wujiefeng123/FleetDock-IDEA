@@ -18,6 +18,7 @@ import { FleetDockLabInjector } from './lab-injector';
 import { FleetDockWorkspaceController } from './workspace-controller';
 import { FleetDockHudRuntimeController } from './hud-runtime-controller';
 import { FleetDockWelcomeInjector } from './welcome-injector';
+import { FleetDockTitleBarInjector } from './titlebar-injector';
 import { PRODUCT_NAME } from '../branding';
 import type { JupyterServer } from '../server';
 import { SettingType } from '../config/settings';
@@ -108,6 +109,10 @@ class FleetDockSessionExtension implements ISessionExtension {
     this._hudRuntimeController.register();
   }
 
+  onTitleBarViewCreated(webContents: Electron.WebContents): void {
+    this._titleBarInjector.attach(webContents);
+  }
+
   onLabViewCreated(webContents: Electron.WebContents): void {
     this._labInjector.attach(webContents);
     webContents.on('page-title-updated', (_event, title) => {
@@ -155,6 +160,7 @@ class FleetDockSessionExtension implements ISessionExtension {
     this._dialogController.dispose();
     this._deviceManagerController.dispose();
     this._hudWindowController.dispose();
+    this._titleBarInjector.dispose();
     this._welcomeInjector.dispose();
     await this._labInjector.dispose();
     await this._simulationController.dispose();
@@ -178,6 +184,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   private _labInjector = new FleetDockLabInjector();
   private _workspaceController: FleetDockWorkspaceController;
   private _hudRuntimeController: FleetDockHudRuntimeController;
+  private _titleBarInjector = new FleetDockTitleBarInjector();
   private _welcomeInjector = new FleetDockWelcomeInjector();
 }
 

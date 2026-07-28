@@ -214,6 +214,9 @@ export class SessionWindow implements IDisposable {
 
     titleBarView.load();
     this._titleBarView = titleBarView;
+    // [UAV-IDE MODIFY] Let optional product extensions style the persistent
+    // title bar without changing the upstream titlebar document.
+    this._extensionHost.onTitleBarViewCreated(titleBarView.view.webContents);
 
     // transfer focus to the current labView. Registered once on the persistent
     // window and titlebar webContents (they outlive every labView); dereferencing
