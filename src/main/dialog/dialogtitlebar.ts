@@ -39,8 +39,9 @@ class JupyterLabDialogTitleBar extends HTMLElement {
         display: flex;
         flex-direction: row;
         padding: 0 10px;
-        background-color: #e1e1e1;
-        color: #000000;
+        /* [UAV-IDE MODIFY] Allow shared desktop colors inside shadow chrome without changing drag or close behavior. */
+        background-color: var(--app-dialog-background, #e1e1e1);
+        color: var(--app-dialog-foreground, #000000);
         -webkit-user-select: none;
         user-select: none;
         -webkit-app-region: drag;
@@ -52,8 +53,8 @@ class JupyterLabDialogTitleBar extends HTMLElement {
       }
 
       :host(.app-ui-dark) .titlebar {
-        background-color: #424242;
-        color: #ffffff;
+        background-color: var(--app-dialog-background, #424242);
+        color: var(--app-dialog-foreground, #ffffff);
       }
 
       .dialog-title {
@@ -72,10 +73,10 @@ class JupyterLabDialogTitleBar extends HTMLElement {
       }
 
       .close-button:hover {
-        background-color: #c1c1c1;
+        background-color: var(--app-dialog-button-hover, #c1c1c1);
       }
       :host(.app-ui-dark) .close-button:hover {
-        background-color: #505050;
+        background-color: var(--app-dialog-button-hover, #505050);
       }
       
       .close-button svg {

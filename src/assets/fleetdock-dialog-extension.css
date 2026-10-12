@@ -1,0 +1,123 @@
+/* [UAV-IDE MODIFY] Restyle existing local dialogs without changing their controls or layout. */
+body:has(.jlab-dialog-body) {
+  --app-dialog-background: var(--fd-ui-bg);
+  --app-dialog-foreground: var(--fd-ui-text);
+  --app-dialog-button-hover: var(--fd-ui-hover);
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-bg) !important;
+  font-family: var(--fd-ui-font) !important;
+}
+
+.jlab-dialog-body :is(.shell, .panel, .footer, .header, .body) {
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-bg) !important;
+  box-shadow: none !important;
+}
+
+.jlab-dialog-body
+  :is(.nav, .card, .section, .sectionTitle, .listToolbar, .mainItem, .mainEmpty, .sensorItem, .sensorEditor, .sensorEditorHead, .sensorEditorSection, .sensorEditorSection
+    .grid, .modal, .modalBox, .modalBody, .modalHead, .envRow, .appCard, .deviceCard, .item, .icon, .deviceIcon, .deviceMeta, .tag, .step, .tab, .endpoint, .probe) {
+  border-color: var(--fd-ui-border) !important;
+  border-radius: 3px !important;
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-surface) !important;
+  box-shadow: none !important;
+}
+
+.jlab-dialog-body
+  :is(.title, .panelTitle, .sectionTitle, .itemName, .deviceCardName, .sensorName, .sensorEditorHead, .sensorEditorSectionTitle, .mainEmpty
+    strong) {
+  color: var(--fd-ui-text) !important;
+  font-weight: 500 !important;
+}
+
+.jlab-dialog-body
+  :is(.label, .sub, .subtitle, .hint, .panelHint, .group, .empty, .sensorMeta, .serialHint, .sensorEmpty, .mainEmpty, .deviceCardMeta) {
+  color: var(--fd-ui-muted) !important;
+}
+
+.jlab-dialog-body :is(input, select, textarea, .field, .textarea, .select) {
+  border-color: var(--fd-ui-border) !important;
+  border-radius: 3px !important;
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-input) !important;
+  box-shadow: none !important;
+}
+
+.jlab-dialog-body :is(input, select, textarea):focus-visible {
+  outline: 1px solid var(--fd-ui-accent) !important;
+  outline-offset: -1px;
+}
+
+.jlab-dialog-body
+  :is(.btn, .smallBtn, .footerBtn, .modalBtn, .iconBtn, .del, .sensorCapture, .mainItemDelete) {
+  border-color: var(--fd-ui-border) !important;
+  border-radius: 3px !important;
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-surface) !important;
+  box-shadow: none !important;
+}
+
+.jlab-dialog-body :is(.btn, .footerBtn, .modalBtn).primary {
+  border-color: var(--fd-ui-button) !important;
+  color: var(--fd-ui-on-accent) !important;
+  background: var(--fd-ui-button) !important;
+}
+
+.jlab-dialog-body
+  :is(.btn, .footerBtn, .modalBtn).primary:hover:not(:disabled) {
+  background: var(--fd-ui-button-hover) !important;
+}
+
+.jlab-dialog-body
+  :is(.item.active, .item[data-active='1'], .mainItem[data-active='1'], .step.active, .tab.active, .sensorCapture.active, .sensorItemGroup[data-editing='1']
+    .sensorItem) {
+  border-color: var(--fd-ui-accent) !important;
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-selection) !important;
+}
+
+.jlab-dialog-body :is(.note, .tag.warn) {
+  border-color: var(--fd-ui-warning) !important;
+  color: var(--fd-ui-warning) !important;
+  background: var(--fd-ui-warning-bg) !important;
+}
+
+.jlab-dialog-body .probe.ok {
+  border-color: var(--fd-ui-success) !important;
+  color: var(--fd-ui-success) !important;
+  background: var(--fd-ui-success-bg) !important;
+}
+
+.jlab-dialog-body :is(.probe.error, .serialHint.error, .tag.error) {
+  border-color: var(--fd-ui-danger) !important;
+  color: var(--fd-ui-danger) !important;
+  background: var(--fd-ui-danger-bg) !important;
+}
+
+.jlab-dialog-body :is(.btn.danger, .mainItemDelete:hover) {
+  color: var(--fd-ui-danger) !important;
+  background: var(--fd-ui-danger-bg) !important;
+}
+
+.jlab-dialog-body :is(.modal, .modalBox, .toast) {
+  border-radius: 4px !important;
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-surface) !important;
+  box-shadow: var(--fd-ui-popup-shadow) !important;
+}
+
+.jlab-dialog-body jp-button::part(control),
+.jlab-dialog-body jp-text-field::part(control),
+.jlab-dialog-body jp-select::part(control) {
+  border-color: var(--fd-ui-border);
+  border-radius: 3px;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-input);
+  font-family: var(--fd-ui-font);
+}
+
+.jlab-dialog-body jp-button[appearance='accent']::part(control) {
+  color: var(--fd-ui-on-accent);
+  background: var(--fd-ui-button);
+}

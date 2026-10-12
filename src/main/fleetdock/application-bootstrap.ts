@@ -12,6 +12,7 @@ import {
   UPSTREAM_PRODUCT_NAME
 } from '../branding';
 import type { DesktopUpdateConfig } from '../app';
+import { installFleetDockDialogStyles } from './dialog-injector';
 
 // [UAV-IDE MODIFY] FleetDock releases are distributed manually until a
 // product-owned, signed update service is available.
@@ -23,6 +24,7 @@ export const fleetDockDesktopUpdateConfig: DesktopUpdateConfig = {
  * FleetDock application-wide setup kept behind two explicit lifecycle hooks.
  */
 export function configureFleetDockApplicationBrand(): void {
+  installFleetDockDialogStyles();
   const thisYear = new Date().getFullYear();
   app.setAboutPanelOptions({
     applicationName: PRODUCT_NAME,
