@@ -1,6 +1,6 @@
 {
-  "name": "skylab-ide",
-  "version": "4.6.2-1",
+  "name": "fleetdock-idea",
+  "version": "4.6.2-2-rc.1",
   "description": "FleetDock IDEA desktop workspace for low-altitude intelligence and UAV application development.",
   "main": "./build/out/main/main.js",
   "scripts": {
@@ -28,8 +28,11 @@
     "dist:osx-arm64": "yarn dist:osx",
     "dist:osx-dev": "yarn build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --macos --publish never",
     "dist:osx-arm64-dev": "yarn build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --macos --arm64 --publish never",
-    "dist:win-64": "yarn build && electron-builder --win --publish never",
+    "dist:win-64": "yarn stage_qgroundcontrol:win-64 && yarn build && electron-builder --win --publish never",
+    "dist:win-64:rc": "set CSC_IDENTITY_AUTO_DISCOVERY=false&& yarn dist:win-64",
+    "dist:win-64:release": "yarn stage_qgroundcontrol:win-64 && node scripts/check-windows-release.js && yarn dist:win-64",
     "dist:win-arm64": "yarn build && yarn electron-builder --arm64 --publish never",
+    "stage_qgroundcontrol:win-64": "node scripts/stage-qgroundcontrol.js",
     "update_workflow_conda_lock": "node scripts/rm.js workflow_env/*.lock && cd workflow_env && conda-lock --kind explicit -f publish_env.yaml && cd -",
     "update_conda_lock": "node scripts/rm.js env_installer/*.lock && cd env_installer && conda-lock --kind explicit -f jlab_server.yaml && cd -",
     "clean_env_installer": "node scripts/rm.js ./env_installer/jlab_server.tar.gz && node scripts/rm.js ./env_installer/jlab_server",
@@ -59,8 +62,10 @@
     "update-ufuzzy": "shx cp node_modules/@leeoniya/ufuzzy/dist/uFuzzy.iife.min.js src/assets/"
   },
   "build": {
-    "appId": "com.skylab.ide",
+    "appId": "com.fleetdock.idea",
     "productName": "FleetDock IDEA",
+    "copyright": "Copyright © FleetDock IDEA Team",
+    "publish": null,
     "artifactName": "${productName}.${ext}",
     "directories": {
       "buildResources": "dist-resources"
@@ -71,7 +76,24 @@
     "files": [
       "!**/*.d.ts",
       "!env_installer",
-      "!workflow_env"
+      "!workflow_env",
+      "!delivery",
+      "!*.log",
+      "!*.md",
+      "!src",
+      "!scripts",
+      "!test",
+      "!test-results",
+      "!.github",
+      "!.vscode",
+      "!AGENTS.md",
+      "!FLEETDOCK_MIGRATION.md",
+      "!dev.md",
+      "!playwright.config.ts",
+      "!tbump.toml",
+      "!tsconfig.json",
+      "!vitest.config.ts",
+      "!webpack.preload.js"
     ],
     "extraResources": [
       "env_installer/jlab_server.tar.gz",
@@ -135,17 +157,31 @@
       "target": [
         "nsis"
       ],
+      "signExts": [
+        "!QGroundControl.exe",
+        "!QGroundControl-Uninstall.exe",
+        "!gst-plugin-scanner.exe",
+        "!gst-ptp-helper.exe",
+        "!vc_redist.x64.exe"
+      ],
       "extraFiles": [
         {
           "from": "dist-resources/win/jlab.cmd",
           "to": "jlab.cmd"
+        },
+        {
+          "from": "dist-resources/win/lib/QGroundControl",
+          "to": "lib/QGroundControl",
+          "filter": [
+            "**/*"
+          ]
         }
       ],
       "icon": "dist-resources/icons/icon.ico"
     },
     "nsis": {
       "oneClick": "false",
-      "artifactName": "${productName}-Setup.${ext}",
+      "artifactName": "FleetDock-IDEA-${version}-win-${arch}-Setup.${ext}",
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "license": "LICENSE",
@@ -193,15 +229,8 @@
     "afterPack": "scripts/afterPack.js"
   },
   "author": {
-    "name": "Project Jupyter",
-    "email": "project.jupyter@gmail.com",
-    "url": "http://jupyter.org"
+    "name": "FleetDock IDEA Team"
   },
-  "bugs": {
-    "url": "https://github.com/jupyterlab/jupyterlab-desktop/issues"
-  },
-  "homepage": "https://github.com/jupyterlab/jupyterlab-desktop#readme",
-  "repository": "https://github.com/jupyterlab/jupyterlab-desktop",
   "license": "BSD-3-Clause",
   "devDependencies": {
     "@electron/fuses": "^2.1.1",
@@ -233,17 +262,18 @@
     "webpack-cli": "^4.5.0"
   },
   "resolutions": {
-    "micromatch": "^4.0.8"
+    "micromatch": "^4.0.8",
+    "fix-path/**/cross-spawn": "^6.0.6"
   },
   "dependencies": {
     "@lumino/signaling": "^2.1.5",
     "ejs": "^6.0.1",
     "electron-log": "^5.4.4",
-    "fast-xml-parser": "^5.9.0",
+    "fast-xml-parser": "^5.10.1",
     "fix-path": "^3.0.0",
-    "js-yaml": "^5.2.0",
+    "js-yaml": "^5.2.3",
     "semver": "^7.8.4",
-    "tar": "^7.5.16",
+    "tar": "^7.5.22",
     "update-electron-app": "^3.2.0",
     "which": "^7.0.0",
     "winreg": "^1.2.5",

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RESOURCES = ROOT / "dist-resources"
 ICONS = RESOURCES / "icons"
 SCALE = 4
+PACKAGED_MARK_OFFSET = (26, 26)
 
 
 def _font(
@@ -68,14 +69,17 @@ def _fleetdock_icon(size: int = 512) -> Image.Image:
     image = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
     image.paste(background, (0, 0), mask)
     draw = ImageDraw.Draw(image)
+    offset_x, offset_y = PACKAGED_MARK_OFFSET
 
-    # [UAV-IDE MODIFY] Keep packaging assets aligned with the reviewed gateway logo.
+    # [UAV-IDE MODIFY] Optically center the asymmetric gateway mark within Windows icon tiles.
     def draw_route(
         points: list[tuple[float, float]],
         color: tuple[int, int, int, int],
         width: int,
     ) -> None:
-        scaled_points = _scaled(points, factor)
+        scaled_points = _scaled(
+            [(x + offset_x, y + offset_y) for x, y in points], factor
+        )
         scaled_width = round(width * factor)
         draw.line(
             scaled_points,
@@ -105,6 +109,8 @@ def _fleetdock_icon(size: int = 512) -> Image.Image:
         (284, 130, green, light),
         (235, 330, light, dark),
     ]:
+        x += offset_x
+        y += offset_y
         outer_radius = 22 * factor
         inner_radius = 10 * factor
         draw.ellipse(

@@ -1,7 +1,7 @@
 # github_url = "https://github.com/jupyterlab/jupyterlab-desktop/"
 
 [version]
-current = "4.6.2-1"
+current = "4.6.2-2-rc.1"
 
 regex = '''
   (?P<major>\d+)
@@ -11,6 +11,9 @@ regex = '''
   (?P<patch>\d+)
   \-
   (?P<build>\d+)
+  (?:
+    \-rc\.(?P<rc>\d+)
+  )?
   '''
 
 [git]

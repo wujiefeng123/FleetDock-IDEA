@@ -1,2 +1,3 @@
 @echo off
-call JupyterLab.exe %*
+"%~dp0FleetDock IDEA.exe" %*
+exit /b %ERRORLEVEL%
