@@ -1,68 +1,68 @@
 /* [UAV-IDE MODIFY] Apply the FleetDock IDEA light shell skin to JupyterLab without changing editor behavior. */
 :root {
-  --skylab-bg: #f6f8fb;
-  --skylab-bg-soft: #eef6ff;
-  --skylab-surface: rgba(255, 255, 255, 0.94);
-  --skylab-surface-solid: #ffffff;
-  --skylab-border: #e2e8f0;
-  --skylab-border-strong: #cbd5e1;
-  --skylab-text: #111827;
-  --skylab-muted: #64748b;
-  --skylab-blue: #2563eb;
-  --skylab-blue-soft: rgba(37, 99, 235, 0.1);
-  --skylab-cyan-soft: rgba(6, 182, 212, 0.12);
-  --skylab-file-bg: linear-gradient(180deg, #eef6ff 0%, #ffffff 56%);
+  --skylab-bg: var(--fd-ui-bg);
+  --skylab-bg-soft: var(--fd-ui-surface-alt);
+  --skylab-surface: var(--fd-ui-surface);
+  --skylab-surface-solid: var(--fd-ui-surface);
+  --skylab-border: var(--fd-ui-border);
+  --skylab-border-strong: var(--fd-ui-border-strong);
+  --skylab-text: var(--fd-ui-text);
+  --skylab-muted: var(--fd-ui-muted);
+  --skylab-blue: var(--fd-ui-accent);
+  --skylab-blue-soft: var(--fd-ui-selection);
+  --skylab-cyan-soft: var(--fd-ui-selection);
+  --skylab-file-bg: var(--fd-ui-surface-alt);
   --skylab-menu-height: 36px;
   --skylab-tab-height: 36px;
-  --skylab-radius: 10px;
-  --skylab-radius-sm: 8px;
-  --skylab-radius-lg: 12px;
-  --skylab-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
-  --skylab-shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.05);
-  --jp-brand-color0: #1d4ed8;
-  --jp-brand-color1: #2563eb;
-  --jp-brand-color2: #3b82f6;
-  --jp-brand-color3: #dbeafe;
-  --jp-layout-color0: #f6f8fb;
-  --jp-layout-color1: #ffffff;
-  --jp-layout-color2: #eef6ff;
-  --jp-layout-color3: #eaf2ff;
-  --jp-layout-color4: #dbeafe;
-  --jp-border-color0: #cbd5e1;
-  --jp-border-color1: #dbe7f3;
-  --jp-border-color2: #e2e8f0;
-  --jp-ui-font-color1: #111827;
-  --jp-ui-font-color2: #64748b;
-  --jp-ui-font-color3: #94a3b8;
-  --jp-rendermime-error-background: #fef2f2;
+  --skylab-radius: 3px;
+  --skylab-radius-sm: 3px;
+  --skylab-radius-lg: 3px;
+  --skylab-shadow: var(--fd-ui-popup-shadow);
+  --skylab-shadow-soft: none;
+  --jp-brand-color0: var(--fd-ui-button-hover);
+  --jp-brand-color1: var(--fd-ui-button);
+  --jp-brand-color2: var(--fd-ui-accent);
+  --jp-brand-color3: var(--fd-ui-selection);
+  --jp-layout-color0: var(--fd-ui-bg);
+  --jp-layout-color1: var(--fd-ui-surface);
+  --jp-layout-color2: var(--fd-ui-surface-alt);
+  --jp-layout-color3: var(--fd-ui-hover);
+  --jp-layout-color4: var(--fd-ui-border);
+  --jp-border-color0: var(--fd-ui-border-strong);
+  --jp-border-color1: var(--fd-ui-border);
+  --jp-border-color2: var(--fd-ui-border);
+  --jp-ui-font-color1: var(--fd-ui-text);
+  --jp-ui-font-color2: var(--fd-ui-muted);
+  --jp-ui-font-color3: var(--fd-ui-muted);
+  --jp-rendermime-error-background: var(--fd-ui-danger-bg);
 }
 
 body[data-jp-theme-light='false'],
 body[data-jp-theme-name*='Dark'] {
-  --skylab-bg: #0f172a;
-  --skylab-bg-soft: #111827;
-  --skylab-surface: rgba(30, 41, 59, 0.94);
-  --skylab-surface-solid: #1e293b;
-  --skylab-border: #334155;
-  --skylab-border-strong: #475569;
-  --skylab-text: #e5e7eb;
-  --skylab-muted: #94a3b8;
-  --skylab-blue-soft: rgba(59, 130, 246, 0.16);
-  --skylab-cyan-soft: rgba(34, 211, 238, 0.14);
-  --skylab-file-bg: linear-gradient(180deg, #172033 0%, #111827 58%);
-  --skylab-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
-  --skylab-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.16);
-  --jp-layout-color0: #0f172a;
-  --jp-layout-color1: #111827;
-  --jp-layout-color2: #1e293b;
-  --jp-layout-color3: #334155;
-  --jp-layout-color4: #475569;
-  --jp-border-color0: #475569;
-  --jp-border-color1: #334155;
-  --jp-border-color2: #1e293b;
-  --jp-ui-font-color1: #e5e7eb;
-  --jp-ui-font-color2: #94a3b8;
-  --jp-ui-font-color3: #64748b;
+  --skylab-bg: var(--fd-ui-bg);
+  --skylab-bg-soft: var(--fd-ui-surface-alt);
+  --skylab-surface: var(--fd-ui-surface);
+  --skylab-surface-solid: var(--fd-ui-surface);
+  --skylab-border: var(--fd-ui-border);
+  --skylab-border-strong: var(--fd-ui-border-strong);
+  --skylab-text: var(--fd-ui-text);
+  --skylab-muted: var(--fd-ui-muted);
+  --skylab-blue-soft: var(--fd-ui-selection);
+  --skylab-cyan-soft: var(--fd-ui-selection);
+  --skylab-file-bg: var(--fd-ui-surface-alt);
+  --skylab-shadow: var(--fd-ui-popup-shadow);
+  --skylab-shadow-soft: none;
+  --jp-layout-color0: var(--fd-ui-bg);
+  --jp-layout-color1: var(--fd-ui-surface);
+  --jp-layout-color2: var(--fd-ui-surface-alt);
+  --jp-layout-color3: var(--fd-ui-hover);
+  --jp-layout-color4: var(--fd-ui-border);
+  --jp-border-color0: var(--fd-ui-border-strong);
+  --jp-border-color1: var(--fd-ui-border);
+  --jp-border-color2: var(--fd-ui-border);
+  --jp-ui-font-color1: var(--fd-ui-text);
+  --jp-ui-font-color2: var(--fd-ui-muted);
+  --jp-ui-font-color3: var(--fd-ui-muted);
 }
 
 *::-webkit-scrollbar {
@@ -75,14 +75,14 @@ body[data-jp-theme-name*='Dark'] {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(37, 99, 235, 0.18);
+  background: var(--fd-ui-scrollbar);
   border: 3px solid transparent;
-  border-radius: 999px;
+  border-radius: 3px;
   background-clip: content-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(37, 99, 235, 0.34);
+  background: var(--fd-ui-scrollbar-hover);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -123,7 +123,7 @@ body,
 .jp-MenuBar,
 .jp-MenuBar .lm-MenuBar-content,
 .jp-MenuBar .p-MenuBar-content {
-  background: #eef6ff !important;
+  background: var(--fd-ui-surface-alt) !important;
 }
 
 /* [UAV-IDE MODIFY] Hide the upstream Jupyter menu mark so the injected FleetDock logo is the only brand mark in the workspace chrome. */
@@ -150,13 +150,13 @@ body,
   position: relative;
   min-height: var(--skylab-menu-height);
   border-bottom: 1px solid var(--skylab-border) !important;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  box-shadow: none;
 }
 
 .jp-MenuBar {
   position: relative;
   min-height: var(--skylab-menu-height);
-  background: #eef6ff !important;
+  background: var(--fd-ui-surface-alt) !important;
   border-bottom: 0 !important;
   color: var(--skylab-text) !important;
   box-shadow: none;
@@ -181,8 +181,8 @@ body,
   display: block;
   width: 24px;
   height: 24px;
-  border-radius: 6px;
-  box-shadow: 0 4px 10px rgba(6, 60, 99, 0.2);
+  border-radius: 3px;
+  box-shadow: none;
 }
 
 .jld-skylab-menu-logo:empty::after {
@@ -211,7 +211,7 @@ body[data-jp-theme-name*='Dark'] #jp-top-panel .jp-MenuBar,
 body[data-jp-theme-name*='Dark'] #jp-top-panel .lm-MenuBar,
 body[data-jp-theme-name*='Dark'] #jp-top-panel .lm-MenuBar-content,
 body[data-jp-theme-name*='Dark'] #jp-top-panel .p-MenuBar-content {
-  background: #172033 !important;
+  background: var(--fd-ui-surface-alt) !important;
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-menu-logo,
@@ -256,9 +256,9 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
 .lm-Menu,
 .jp-ContextMenu {
   border: 1px solid var(--skylab-border);
-  border-radius: 10px;
+  border-radius: 3px;
   overflow: hidden;
-  box-shadow: var(--skylab-shadow);
+  box-shadow: var(--fd-ui-popup-shadow);
 }
 
 .lm-Menu .lm-Menu-item.lm-mod-active {
@@ -319,20 +319,20 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
   border-radius: var(--skylab-radius);
   background: var(--skylab-surface-solid) !important;
   color: var(--skylab-text) !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  box-shadow: none;
 }
 
 .jp-FileBrowser-filterBox input:focus,
 .jp-InputGroup input:focus {
-  border-color: rgba(37, 99, 235, 0.38);
-  box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.16);
+  border-color: var(--fd-ui-border);
+  box-shadow: none;
 }
 
 .jp-DirListing-header {
   background: transparent !important;
   border-color: var(--skylab-border) !important;
   color: var(--skylab-muted) !important;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jp-DirListing-content {
@@ -355,7 +355,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
 .jp-DirListing-item.jp-mod-selected {
   background: var(--skylab-blue) !important;
   color: #fff;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+  box-shadow: none;
 }
 
 .jp-DirListing-item.jp-mod-selected .jp-icon3,
@@ -382,7 +382,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
 }
 
 .lm-TabBar-tab {
-  border-radius: 9px 9px 0 0;
+  border-radius: 3px 3px 0 0;
 }
 
 .lm-DockPanel-tabBar .lm-TabBar-tab {
@@ -398,7 +398,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
   background: var(--skylab-surface-solid) !important;
   border-color: var(--skylab-border) !important;
   color: var(--skylab-text) !important;
-  box-shadow: 0 -2px 0 var(--skylab-blue) inset !important;
+  box-shadow: none !important;
 }
 
 .lm-DockPanel-tabBar .lm-TabBar-tab:hover:not(.lm-mod-current) {
@@ -415,7 +415,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
 
 .jp-MainAreaWidget > .jp-Toolbar,
 .jp-Document .jp-Toolbar {
-  background: #f8fbff !important;
+  background: var(--fd-ui-surface-alt) !important;
   border-bottom: 1px solid var(--skylab-border) !important;
 }
 
@@ -424,7 +424,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
   border: 1px solid var(--skylab-border) !important;
   border-radius: var(--skylab-radius);
   overflow: hidden;
-  box-shadow: var(--skylab-shadow-soft) !important;
+  box-shadow: none !important;
 }
 
 .lm-DockPanel-widget {
@@ -434,7 +434,7 @@ body[data-jp-theme-name*='Dark'] .jld-skylab-menu-logo {
 .jp-CodeMirrorEditor,
 .cm-editor,
 .jp-Editor {
-  background: #fff;
+  background: var(--fd-ui-surface);
 }
 
 body[data-jp-theme-light='false'] .jp-CodeMirrorEditor,
@@ -443,7 +443,7 @@ body[data-jp-theme-light='false'] .jp-Editor,
 body[data-jp-theme-name*='Dark'] .jp-CodeMirrorEditor,
 body[data-jp-theme-name*='Dark'] .cm-editor,
 body[data-jp-theme-name*='Dark'] .jp-Editor {
-  background: var(--jp-layout-color1, #111827);
+  background: var(--jp-layout-color1, var(--fd-ui-surface));
 }
 
 .jp-RightPanel,
@@ -465,5 +465,32 @@ body[data-jp-theme-name*='Dark'] .jp-Editor {
 }
 
 .jp-mod-dropTarget {
-  outline-color: rgba(37, 99, 235, 0.38);
+  outline-color: var(--fd-ui-border);
+}
+
+/* [UAV-IDE MODIFY] Preserve JupyterLab layout and syntax themes while unifying desktop chrome. */
+:root {
+  --jp-ui-font-family: var(--fd-ui-font);
+}
+
+.jp-DirListing-item.jp-mod-selected {
+  background: var(--fd-ui-selection) !important;
+  color: var(--fd-ui-text);
+}
+
+.jp-DirListing-item.jp-mod-selected .jp-icon3,
+.jp-DirListing-item.jp-mod-selected .jp-icon-selectable[fill] {
+  color: var(--fd-ui-text) !important;
+  fill: var(--fd-ui-text) !important;
+}
+
+.jp-DirListing-item.jp-mod-selected .jp-DirListing-itemText,
+.jp-DirListing-item.jp-mod-selected .jp-DirListing-itemModified {
+  color: var(--fd-ui-text) !important;
+}
+
+.jp-FileBrowser-filterBox input:focus,
+.jp-InputGroup input:focus {
+  outline: 1px solid var(--fd-ui-accent);
+  outline-offset: -1px;
 }

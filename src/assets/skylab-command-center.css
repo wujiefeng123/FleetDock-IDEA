@@ -1,17 +1,17 @@
 /* [UAV-IDE MODIFY] Add a right-side FleetDock command center that keeps the main JupyterLab editor focused on code. */
 :root {
-  --jld-sky-bg: #eef6ff;
-  --jld-sky-panel: #ffffff;
-  --jld-sky-soft: #eff6ff;
-  --jld-sky-border: #dbe7f3;
-  --jld-sky-text: #0f172a;
-  --jld-sky-muted: #64748b;
-  --jld-sky-blue: #2563eb;
-  --jld-sky-cyan: #06b6d4;
-  --jld-sky-green: #16a34a;
-  --jld-sky-warn: #d97706;
-  --jld-sky-danger: #dc2626;
-  --jld-sky-shadow: 0 18px 52px rgba(15, 23, 42, 0.16);
+  --jld-sky-bg: var(--fd-ui-bg);
+  --jld-sky-panel: var(--fd-ui-surface);
+  --jld-sky-soft: var(--fd-ui-surface-alt);
+  --jld-sky-border: var(--fd-ui-border);
+  --jld-sky-text: var(--fd-ui-text);
+  --jld-sky-muted: var(--fd-ui-muted);
+  --jld-sky-blue: var(--fd-ui-accent);
+  --jld-sky-cyan: var(--fd-ui-accent);
+  --jld-sky-green: var(--fd-ui-success);
+  --jld-sky-warn: var(--fd-ui-warning);
+  --jld-sky-danger: var(--fd-ui-danger);
+  --jld-sky-shadow: var(--fd-ui-popup-shadow);
 }
 
 .jld-skylab-center {
@@ -35,8 +35,8 @@
 .jld-skylab-rail {
   width: 48px;
   border-left: 1px solid var(--jld-sky-border);
-  background: rgba(238, 246, 255, 0.96);
-  box-shadow: -1px 0 0 rgba(15, 23, 42, 0.02);
+  background: var(--fd-ui-surface);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -48,7 +48,7 @@
   width: 32px;
   height: 32px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -60,9 +60,9 @@
 .jld-skylab-rail-btn:hover,
 .jld-skylab-rail-btn[data-active='1'] {
   color: var(--jld-sky-blue);
-  border-color: #bfdbfe;
+  border-color: var(--fd-ui-border);
   background: var(--jld-sky-soft);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+  box-shadow: none;
 }
 
 .jld-skylab-rail-icon {
@@ -88,7 +88,7 @@
 .jld-skylab-center[data-open='1'] .jld-skylab-drawer {
   width: 360px;
   border-left: 1px solid var(--jld-sky-border);
-  box-shadow: var(--jld-sky-shadow);
+  box-shadow: none;
 }
 
 /* [UAV-IDE MODIFY] Add a left-expanding read-only FleetDock HUD for telemetry from user-owned SDK connections. */
@@ -125,7 +125,7 @@
   justify-content: space-between;
   gap: 10px;
   border-bottom: 1px solid var(--jld-sky-border);
-  background: #f8fbff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-hud-head > div:first-child {
@@ -135,9 +135,9 @@
 .jld-skylab-hud-device {
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: -14px 16px 42px rgba(15, 23, 42, 0.14);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
+  box-shadow: none;
   pointer-events: auto;
 }
 
@@ -156,7 +156,7 @@
 
 .jld-skylab-hud-head strong {
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-hud-head span {
@@ -167,11 +167,11 @@
 .jld-skylab-hud-empty {
   min-height: 54px;
   border: 1px dashed var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 10px 12px 10px 14px;
   color: var(--jld-sky-muted);
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: -14px 16px 42px rgba(15, 23, 42, 0.1);
+  background: var(--fd-ui-surface);
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -187,7 +187,7 @@
 .jld-skylab-hud-empty strong {
   color: var(--jld-sky-text);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-hud-empty span {
@@ -208,15 +208,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  background: rgba(100, 116, 139, 0.12);
-  color: #475569;
+  border-radius: 3px;
+  background: var(--fd-ui-hover);
+  color: var(--fd-ui-muted);
   font-size: 12px;
 }
 
 .jld-skylab-hud-actions span[data-online='1'] {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
+  background: var(--fd-ui-success-bg);
+  color: var(--fd-ui-success);
 }
 
 .jld-skylab-hud-attitude {
@@ -225,7 +225,7 @@
   margin: 2px 0 10px;
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   background: transparent;
   perspective: 420px;
 }
@@ -244,7 +244,7 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  background: rgba(37, 99, 235, 0.16);
+  background: var(--fd-ui-selection);
   transform: translate(-50%, -50%);
 }
 
@@ -443,8 +443,8 @@
 .jld-skylab-hud-metric {
   min-width: 0;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 6px;
-  background: #fbfdff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
   padding: 7px 8px;
 }
 
@@ -479,22 +479,22 @@
 .jld-skylab-hud-flags span {
   height: 22px;
   padding: 0 8px;
-  border-radius: 999px;
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
-  background: rgba(100, 116, 139, 0.12);
-  color: #475569;
+  background: var(--fd-ui-hover);
+  color: var(--fd-ui-muted);
   font-size: 11px;
 }
 
 .jld-skylab-hud-flags span[data-ok='1'] {
-  background: rgba(22, 163, 74, 0.1);
-  color: #15803d;
+  background: var(--fd-ui-success-bg);
+  color: var(--fd-ui-success);
 }
 
 .jld-skylab-hud-flags span[data-ok='0'] {
   background: rgba(220, 38, 38, 0.1);
-  color: #b91c1c;
+  color: var(--fd-ui-danger);
 }
 
 .jld-skylab-hud-event {
@@ -521,19 +521,19 @@
   padding: 0 7px;
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  background: rgba(100, 116, 139, 0.1);
+  border-radius: 3px;
+  background: var(--fd-ui-hover);
   color: var(--jld-sky-muted);
   font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .jld-skylab-hud-state-strip span[data-ok='1'] {
-  color: #15803d;
-  background: rgba(22, 163, 74, 0.1);
+  color: var(--fd-ui-success);
+  background: var(--fd-ui-success-bg);
 }
 
 .jld-skylab-hud-state-strip span[data-ok='0'] {
-  color: #b91c1c;
+  color: var(--fd-ui-danger);
   background: rgba(220, 38, 38, 0.1);
 }
 
@@ -544,9 +544,9 @@
 .jld-skylab-hud-position {
   margin-top: 7px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 7px;
+  border-radius: 3px;
   overflow: hidden;
-  background: rgba(248, 251, 255, 0.72);
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-hud-vector {
@@ -606,17 +606,17 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid #bfdbfe;
-  border-radius: 6px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
   font: 600 10px/1 inherit;
   cursor: pointer;
 }
 
 .jld-skylab-hud-sensors button:hover {
-  border-color: #60a5fa;
-  background: #dbeafe;
+  border-color: var(--fd-ui-accent);
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-hud-sensors button > span {
@@ -629,30 +629,30 @@
 .jld-skylab-hud-sensors button > small {
   max-width: 74px;
   overflow: hidden;
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font: 8px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .jld-skylab-hud-sensors button[data-state='discovered'] > span {
-  background: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  background: var(--fd-ui-selection);
+  box-shadow: none;
 }
 
 .jld-skylab-hud-sensors button[data-state='live'] > span {
-  background: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+  background: var(--fd-ui-success);
+  box-shadow: none;
 }
 
 .jld-skylab-hud-sensors button[data-state='stale'] > span {
-  background: #d97706;
-  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+  background: var(--fd-ui-warning);
+  box-shadow: none;
 }
 
 .jld-skylab-hud-sensors button[data-state='error'] > span {
-  background: #dc2626;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+  background: var(--fd-ui-danger);
+  box-shadow: none;
 }
 
 .jld-skylab-hud-event {
@@ -684,9 +684,9 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 12px;
+  border-radius: 3px;
   background: var(--jld-sky-panel);
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  box-shadow: var(--fd-ui-popup-shadow);
   pointer-events: auto;
 }
 
@@ -698,7 +698,7 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--jld-sky-border);
-  background: linear-gradient(180deg, #f8fbff, #eef6ff);
+  background: var(--fd-ui-surface-alt);
 }
 
 /* [UAV-IDE MODIFY] Keep the camera viewer compact and draggable while leaving other sensor panels unchanged. */
@@ -749,7 +749,7 @@
   width: 30px;
   height: 30px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 3px;
   background: transparent;
   color: var(--jld-sky-muted);
   font-size: 22px;
@@ -771,7 +771,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #020617;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-sensor-viewport video {
@@ -810,8 +810,8 @@
   align-self: start;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 8px;
-  background: #020617;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-camera-card video {
@@ -825,16 +825,16 @@
 .jld-skylab-camera-stats {
   position: absolute;
   z-index: 1;
-  color: #f8fafc;
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(5px);
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
+  backdrop-filter: none;
 }
 
 .jld-skylab-camera-head {
   top: 8px;
   left: 8px;
   padding: 5px 8px;
-  border-radius: 6px;
+  border-radius: 3px;
 }
 
 .jld-skylab-camera-head strong,
@@ -848,7 +848,7 @@
 
 .jld-skylab-camera-head span {
   margin-top: 2px;
-  color: #bfdbfe;
+  color: var(--fd-ui-accent);
   font-size: 9px;
 }
 
@@ -858,27 +858,27 @@
   max-width: 52%;
   padding: 5px 8px;
   overflow: hidden;
-  border-radius: 999px;
-  color: #fbbf24;
+  border-radius: 3px;
+  color: var(--fd-ui-warning);
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .jld-skylab-camera-state[data-state='live'] {
-  color: #86efac;
+  color: var(--fd-ui-success);
 }
 
 .jld-skylab-camera-state[data-state='error'] {
-  color: #fca5a5;
+  color: var(--fd-ui-danger);
 }
 
 .jld-skylab-camera-stats {
   right: 8px;
   bottom: 8px;
   padding: 5px 7px;
-  border-radius: 5px;
-  color: #cbd5e1;
+  border-radius: 3px;
+  color: var(--fd-ui-text);
   font: 600 9px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -891,9 +891,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 999px;
-  color: #fff;
-  background: rgba(15, 23, 42, 0.68);
+  border-radius: 3px;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
   font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
@@ -901,14 +901,14 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.22);
+  background: var(--fd-ui-success);
+  box-shadow: none;
 }
 
 .jld-skylab-sensor-placeholder {
   max-width: 320px;
   padding: 24px;
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
   text-align: center;
 }
 
@@ -983,7 +983,7 @@
   overflow: auto;
   padding: 12px;
   border-left: 1px solid var(--jld-sky-border);
-  background: #fbfdff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-sensor-status {
@@ -995,30 +995,30 @@
 
 .jld-skylab-sensor-status span {
   padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(100, 116, 139, 0.1);
+  border-radius: 3px;
+  background: var(--fd-ui-hover);
   color: var(--jld-sky-muted);
   font-size: 9px;
 }
 
 .jld-skylab-sensor-status span[data-ok='1'],
 .jld-skylab-sensor-status span[data-state='live'] {
-  color: #15803d;
-  background: rgba(22, 163, 74, 0.1);
+  color: var(--fd-ui-success);
+  background: var(--fd-ui-success-bg);
 }
 
 .jld-skylab-sensor-status span[data-state='discovered'] {
-  color: #1d4ed8;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--fd-ui-accent);
+  background: var(--fd-ui-selection);
 }
 
 .jld-skylab-sensor-status span[data-state='stale'] {
-  color: #b45309;
+  color: var(--fd-ui-warning);
   background: rgba(217, 119, 6, 0.12);
 }
 
 .jld-skylab-sensor-status span[data-state='error'] {
-  color: #b91c1c;
+  color: var(--fd-ui-danger);
   background: rgba(220, 38, 38, 0.1);
 }
 
@@ -1058,12 +1058,12 @@
   justify-content: space-between;
   padding: 0 14px 0 16px;
   border-bottom: 1px solid var(--jld-sky-border);
-  background: linear-gradient(180deg, #f8fbff, #eef6ff);
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-title {
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 500;
   color: var(--jld-sky-text);
 }
 
@@ -1079,9 +1079,9 @@
 .jld-skylab-close,
 .jld-skylab-btn {
   border: 1px solid var(--jld-sky-border);
-  background: #fff;
+  background: var(--fd-ui-surface);
   color: var(--jld-sky-text);
-  border-radius: 8px;
+  border-radius: 3px;
   min-height: 32px;
   padding: 0 10px;
   cursor: pointer;
@@ -1096,7 +1096,7 @@
 
 .jld-skylab-btn:hover,
 .jld-skylab-close:hover {
-  border-color: #93c5fd;
+  border-color: var(--fd-ui-border);
   background: var(--jld-sky-soft);
   color: var(--jld-sky-blue);
 }
@@ -1108,7 +1108,7 @@
 }
 
 .jld-skylab-btn[data-variant='primary']:hover {
-  background: #1d4ed8;
+  background: var(--fd-ui-selection);
   color: #fff;
 }
 
@@ -1118,13 +1118,13 @@
   gap: 6px;
   padding: 10px;
   border-bottom: 1px solid var(--jld-sky-border);
-  background: #f8fbff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-tab {
   height: 32px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 3px;
   background: transparent;
   color: var(--jld-sky-muted);
   cursor: pointer;
@@ -1132,9 +1132,9 @@
 
 .jld-skylab-tab[data-active='1'] {
   background: var(--jld-sky-soft);
-  border-color: #bfdbfe;
+  border-color: var(--fd-ui-border);
   color: var(--jld-sky-blue);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-body {
@@ -1142,13 +1142,13 @@
   min-height: 0;
   overflow: auto;
   padding: 12px;
-  background: #f8fbff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-section {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   padding: 10px;
   margin-bottom: 10px;
 }
@@ -1158,7 +1158,7 @@
 }
 
 .jld-skylab-section-title {
-  font-weight: 800;
+  font-weight: 500;
   margin-bottom: 8px;
 }
 
@@ -1171,7 +1171,7 @@
 
 .jld-skylab-kv strong {
   color: var(--jld-sky-text);
-  font-weight: 600;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1202,9 +1202,9 @@
 
 .jld-skylab-metric {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 8px;
-  background: #f8fbff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-metric strong {
@@ -1225,16 +1225,16 @@
 
 .jld-skylab-row {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 8px;
-  background: #fff;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-row-title {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-row-sub {
@@ -1254,7 +1254,7 @@
 }
 
 .jld-skylab-pill {
-  border-radius: 999px;
+  border-radius: 3px;
   padding: 2px 8px;
   background: var(--jld-sky-soft);
   color: var(--jld-sky-blue);
@@ -1263,28 +1263,28 @@
 }
 
 .jld-skylab-pill[data-tone='ok'] {
-  background: #dcfce7;
+  background: var(--fd-ui-success-bg);
   color: var(--jld-sky-green);
 }
 
 .jld-skylab-pill[data-tone='warn'] {
-  background: #fef3c7;
+  background: var(--fd-ui-warning-bg);
   color: var(--jld-sky-warn);
 }
 
 .jld-skylab-empty,
 .jld-skylab-log {
   color: var(--jld-sky-muted);
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
+  border: 1px dashed var(--fd-ui-border);
+  border-radius: 3px;
   padding: 12px;
-  background: #fff;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-summary {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   padding: 11px;
   margin-bottom: 10px;
   display: flex;
@@ -1295,7 +1295,7 @@
 
 .jld-skylab-summary-title {
   font-size: 16px;
-  font-weight: 850;
+  font-weight: 500;
   color: var(--jld-sky-text);
 }
 
@@ -1315,8 +1315,8 @@
 .jld-skylab-status-card {
   width: 100%;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   padding: 9px 10px;
   text-align: left;
   cursor: pointer;
@@ -1324,7 +1324,7 @@
 }
 
 .jld-skylab-status-card:hover {
-  border-color: #93c5fd;
+  border-color: var(--fd-ui-border);
   background: var(--jld-sky-soft);
 }
 
@@ -1365,8 +1365,8 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
   background: var(--jld-sky-soft);
   color: var(--jld-sky-blue);
   padding: 3px 8px;
@@ -1381,8 +1381,8 @@
 .jld-skylab-compact-empty,
 .jld-skylab-guide {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   color: var(--jld-sky-muted);
   padding: 10px;
 }
@@ -1410,25 +1410,25 @@
   gap: 8px;
   align-items: flex-start;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 8px;
-  background: #fff;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-check > span {
   width: 20px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fef3c7;
+  background: var(--fd-ui-warning-bg);
   color: var(--jld-sky-warn);
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-check[data-ok='1'] > span {
-  background: #dcfce7;
+  background: var(--fd-ui-success-bg);
   color: var(--jld-sky-green);
 }
 
@@ -1448,11 +1448,11 @@
 /* [UAV-IDE MODIFY] Match the application overview page to the compact card layout requested for the FleetDock command center. */
 .jld-skylab-overview-card {
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   padding: 14px;
   margin-bottom: 10px;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  box-shadow: none;
 }
 
 .jld-skylab-overview-card-head {
@@ -1504,7 +1504,7 @@
 .jld-skylab-current-device strong,
 .jld-skylab-sim-status strong {
   color: var(--jld-sky-text);
-  font-weight: 650;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1539,7 +1539,7 @@
 
 .jld-skylab-device-count strong {
   color: var(--jld-sky-green);
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-device-count strong[data-muted='1'] {
@@ -1547,7 +1547,7 @@
 }
 
 .jld-skylab-device-count em {
-  color: #cbd5e1;
+  color: var(--fd-ui-text);
   font-style: normal;
 }
 
@@ -1582,7 +1582,7 @@
   content: '';
   width: 9px;
   height: 9px;
-  border-radius: 999px;
+  border-radius: 3px;
   background: var(--jld-sky-green);
 }
 
@@ -1604,8 +1604,8 @@
 
 .jld-skylab-sim-status strong {
   justify-self: start;
-  border-radius: 999px;
-  background: #f1f5f9;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
   color: var(--jld-sky-muted);
   padding: 4px 10px;
   font-size: 12px;
@@ -1648,8 +1648,8 @@
   min-width: 0;
   height: 32px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 7px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   color: var(--jld-sky-text);
   padding: 0 9px;
   outline: none;
@@ -1657,15 +1657,15 @@
 
 .jld-skylab-field input:focus,
 .jld-skylab-field select:focus {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--fd-ui-border);
+  box-shadow: none;
 }
 
 /* [UAV-IDE MODIFY] Support the simplified add-device form fixed type and env-var sync checkbox. */
 .jld-skylab-field select:disabled,
 .jld-skylab-field input:disabled {
   color: var(--jld-sky-muted);
-  background: #f8fbff;
+  background: var(--fd-ui-surface-alt);
   cursor: not-allowed;
 }
 
@@ -1716,9 +1716,9 @@
   gap: 10px;
   margin: 0 0 10px;
   padding: 10px 11px;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #fff, #eff6ff);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
   color: var(--jld-sky-text);
   text-align: left;
   cursor: pointer;
@@ -1727,15 +1727,15 @@
 }
 
 .jld-skylab-device-library-entry:hover {
-  border-color: #60a5fa;
-  box-shadow: 0 5px 16px rgba(37, 99, 235, 0.1);
+  border-color: var(--fd-ui-accent);
+  box-shadow: none;
   transform: translateY(-1px);
 }
 
 .jld-skylab-device-library-entry:focus-visible,
 .jld-skylab-device-card:focus-visible,
 .jld-skylab-device-debug-action:focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid var(--fd-ui-accent);
   outline-offset: 2px;
 }
 
@@ -1745,9 +1745,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: #dbeafe;
-  color: #2563eb;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-device-library-icon svg {
@@ -1769,7 +1769,7 @@
 
 .jld-skylab-device-library-copy strong {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-device-library-copy small {
@@ -1785,13 +1785,13 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #2563eb;
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-device-library-meta > span {
   padding: 2px 7px;
-  border-radius: 999px;
-  background: #dbeafe;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
   font-size: 10px;
   white-space: nowrap;
 }
@@ -1805,7 +1805,7 @@
   position: relative;
   overflow: hidden;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 3px;
   transition: border-color 150ms ease, box-shadow 150ms ease,
     transform 150ms ease;
 }
@@ -1819,7 +1819,7 @@
   gap: 8px;
   padding: 10px 30px 10px 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 3px;
   background: transparent;
   color: var(--jld-sky-text);
   font: inherit;
@@ -1833,8 +1833,8 @@
 }
 
 .jld-skylab-device-card-shell:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.08);
+  border-color: var(--fd-ui-border);
+  box-shadow: none;
   transform: translateY(-1px);
 }
 
@@ -1849,21 +1849,21 @@
   min-width: 43px;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid #93c5fd;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
   transform: translateY(-50%);
   transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
 
 .jld-skylab-device-debug-action:hover {
-  border-color: #2563eb;
-  background: #dbeafe;
-  color: #1e40af;
+  border-color: var(--fd-ui-accent);
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-device-card-main {
@@ -1880,34 +1880,34 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #bfdbfe;
-  border-radius: 11px;
-  background: #eff6ff;
-  color: #2563eb;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-device-type-icon[data-category='ugv'] {
   border-color: #a7f3d0;
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--fd-ui-success-bg);
+  color: var(--fd-ui-success);
 }
 
 .jld-skylab-device-type-icon[data-category='usv'] {
   border-color: #a5f3fc;
-  background: #ecfeff;
-  color: #0891b2;
+  background: var(--fd-ui-selection);
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-device-type-icon[data-category='humanoid'] {
   border-color: #ddd6fe;
-  background: #f5f3ff;
+  background: var(--fd-ui-surface-alt);
   color: #7c3aed;
 }
 
 .jld-skylab-device-type-icon[data-category='quadruped'] {
   border-color: #fde68a;
-  background: #fffbeb;
-  color: #d97706;
+  background: var(--fd-ui-warning-bg);
+  color: var(--fd-ui-warning);
 }
 
 .jld-skylab-device-type-icon-svg {
@@ -1931,7 +1931,7 @@
   overflow: hidden;
   color: var(--jld-sky-text);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1949,8 +1949,8 @@
   min-height: 20px;
   padding: 1px 7px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 999px;
-  background: #f8fafc;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
   color: var(--jld-sky-muted);
   font-size: 11px;
   line-height: 1.2;
@@ -1958,21 +1958,21 @@
 
 .jld-skylab-device-card-facts span[data-source='simulation'] {
   border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
+  background: var(--fd-ui-success-bg);
+  color: var(--fd-ui-success);
 }
 
 .jld-skylab-device-card-facts span[data-source='physical'] {
   border-color: #fed7aa;
-  background: #fff7ed;
-  color: #c2410c;
+  background: var(--fd-ui-warning-bg);
+  color: var(--fd-ui-warning);
 }
 
 .jld-skylab-device-card-chevron {
   position: absolute;
   top: 50%;
   right: 10px;
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
   font-size: 25px;
   font-weight: 400;
   line-height: 1;
@@ -1980,13 +1980,13 @@
 }
 
 .jld-skylab-device-card:hover .jld-skylab-device-card-chevron {
-  color: #2563eb;
+  color: var(--fd-ui-accent);
 }
 
 /* [UAV-IDE MODIFY] Style the productized simulation tab after the FleetDock simulation workflow mockup. */
 .jld-skylab-sim-card {
   padding: 10px;
-  border-radius: 8px;
+  border-radius: 3px;
 }
 
 .jld-skylab-sim-state-row {
@@ -2000,9 +2000,9 @@
 .jld-skylab-spinner {
   width: 30px;
   height: 30px;
-  border-radius: 999px;
-  border: 4px solid #dbeafe;
-  border-top-color: #38bdf8;
+  border-radius: 3px;
+  border: 4px solid var(--fd-ui-border);
+  border-top-color: var(--fd-ui-accent);
 }
 
 .jld-skylab-spinner[data-active='1'] {
@@ -2016,7 +2016,7 @@
 
 .jld-skylab-sim-state-text strong {
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-sim-state-text span {
@@ -2028,13 +2028,13 @@
 .jld-skylab-sim-percent {
   color: var(--jld-sky-blue);
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .jld-skylab-progress {
   height: 6px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: 3px;
   background: #e5e7eb;
 }
 
@@ -2042,7 +2042,7 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #38bdf8, var(--jld-sky-blue));
+  background: var(--fd-ui-button);
 }
 
 .jld-skylab-sim-time-row {
@@ -2057,7 +2057,7 @@
 .jld-skylab-sim-time-row strong {
   color: var(--jld-sky-muted);
   font-family: Consolas, 'Courier New', monospace;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .jld-skylab-sim-config {
@@ -2079,7 +2079,7 @@
 
 .jld-skylab-sim-config-row > strong {
   color: var(--jld-sky-text);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .jld-skylab-sim-device-row {
@@ -2118,8 +2118,8 @@
   min-width: 0;
   min-height: 28px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 5px;
-  background: #fbfdff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-port-row {
@@ -2140,7 +2140,7 @@
 .jld-skylab-port-row strong {
   text-align: right;
   font-family: Consolas, 'Courier New', monospace;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .jld-skylab-path-row {
@@ -2162,8 +2162,8 @@
   min-width: 0;
   min-height: 32px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 5px;
-  background: #fbfdff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-scene-select-row select {
@@ -2192,9 +2192,9 @@
   max-height: min(680px, calc(100vh - 32px));
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
+  box-shadow: var(--fd-ui-popup-shadow);
 }
 
 .jld-skylab-modal-head {
@@ -2243,13 +2243,13 @@
   grid-template-columns: minmax(0, 1fr) 34px;
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 7px;
+  border-radius: 3px;
   background: var(--jld-sky-panel);
 }
 
 .jld-skylab-path-picker:focus-within {
-  border-color: #93c5fd;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--fd-ui-border);
+  box-shadow: none;
 }
 
 .jld-skylab-path-picker input {
@@ -2278,11 +2278,11 @@
 }
 
 .jld-skylab-path-picker button:hover {
-  background: #dbeafe;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-path-picker button:focus-visible {
-  outline: 2px solid #60a5fa;
+  outline: 2px solid var(--fd-ui-accent);
   outline-offset: -3px;
 }
 
@@ -2317,13 +2317,13 @@
   gap: 10px;
   align-items: center;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 9px 10px;
 }
 
 .jld-skylab-scene-row.is-selected {
   border-color: var(--jld-sky-blue);
-  background: #f5f9ff;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-scene-row-main {
@@ -2356,7 +2356,7 @@
   min-width: 0;
   height: 32px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 5px;
+  border-radius: 3px;
   padding: 0 8px;
   color: var(--jld-sky-text);
   font: inherit;
@@ -2426,17 +2426,17 @@
   gap: 9px;
   min-height: 52px;
   padding: 8px 10px;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  background: #eff6ff;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-env-checking > span {
   width: 18px;
   height: 18px;
-  border: 2px solid #bfdbfe;
+  border: 2px solid var(--fd-ui-border);
   border-top-color: var(--jld-sky-blue);
-  border-radius: 999px;
+  border-radius: 3px;
   animation: jld-skylab-spin 800ms linear infinite;
 }
 
@@ -2446,7 +2446,7 @@
 }
 
 .jld-skylab-env-checking strong {
-  color: #1d4ed8;
+  color: var(--fd-ui-accent);
   font-size: 12px;
 }
 
@@ -2466,8 +2466,8 @@
   gap: 8px;
   align-items: center;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   height: 64px;
   padding: 7px 9px;
   overflow: hidden;
@@ -2478,15 +2478,15 @@
   place-items: center;
   width: 18px;
   height: 18px;
-  border-radius: 999px;
-  background: #f59e0b;
+  border-radius: 3px;
+  background: var(--fd-ui-warning);
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-env-row[data-ok='1'] > span {
-  background: #16a34a;
+  background: var(--fd-ui-success);
 }
 
 .jld-skylab-env-row strong,
@@ -2518,9 +2518,9 @@
   gap: 8px;
   height: 44px;
   border: 1px solid #bbf7d0;
-  border-radius: 8px;
-  background: #f0fdf4;
-  color: #166534;
+  border-radius: 3px;
+  background: var(--fd-ui-success-bg);
+  color: var(--fd-ui-success);
   padding: 0 10px;
 }
 
@@ -2529,11 +2529,11 @@
   place-items: center;
   width: 18px;
   height: 18px;
-  border-radius: 999px;
-  background: #16a34a;
+  border-radius: 3px;
+  background: var(--fd-ui-success);
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-env-pass strong {
@@ -2551,17 +2551,17 @@
   place-items: center;
   padding: 24px;
   pointer-events: auto;
-  background: rgba(248, 251, 255, 0.88);
-  backdrop-filter: blur(3px);
+  background: var(--fd-ui-surface);
+  backdrop-filter: none;
 }
 
 .jld-skylab-stop-wait {
   width: min(280px, 100%);
   padding: 24px 20px;
-  border: 1px solid #bfdbfe;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
+  box-shadow: none;
   text-align: center;
 }
 
@@ -2599,8 +2599,8 @@
   align-items: center;
   gap: 10px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   padding: 7px 9px;
   min-width: 0;
 }
@@ -2629,18 +2629,18 @@
 }
 
 .jld-skylab-sim-stage[data-state='running'] {
-  border-color: #93c5fd;
-  background: #eff6ff;
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-sim-stage[data-state='failed'] {
   border-color: #fecaca;
-  background: #fef2f2;
+  background: var(--fd-ui-danger-bg);
 }
 
 .jld-skylab-sim-stage[data-state='failed'] span,
 .jld-skylab-sim-stage[data-state='failed'] small {
-  color: #b91c1c;
+  color: var(--fd-ui-danger);
 }
 
 .jld-skylab-sim-log-list {
@@ -2684,7 +2684,7 @@
   gap: 14px;
   padding: 10px 0 0;
   margin-top: 4px;
-  background: linear-gradient(180deg, rgba(248, 251, 255, 0), #f8fbff 26%);
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-sim-footer .jld-skylab-btn {
@@ -2708,8 +2708,8 @@
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-sim-runtime-head > div {
@@ -2727,7 +2727,7 @@
 .jld-skylab-sim-runtime-head strong {
   color: var(--jld-sky-text);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -2755,8 +2755,8 @@
 .jld-skylab-sim-controls {
   padding: 9px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
 }
 
 .jld-skylab-sim-controls-head {
@@ -2800,17 +2800,17 @@
   min-width: 42px;
   height: 20px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(22, 163, 74, 0.1);
+  background: var(--fd-ui-success-bg);
   color: var(--jld-sky-green);
   font-size: 10px;
 }
 
 .jld-skylab-sim-controls-actions > span[data-busy='1'] {
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--fd-ui-selection);
   color: var(--jld-sky-blue);
 }
 
@@ -2971,8 +2971,8 @@
   gap: 8px;
   padding: 7px 9px;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 8px;
-  background: #f8fbff;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
 }
 
 .jld-skylab-sim-hud-summary strong,
@@ -3002,7 +3002,7 @@
 .jld-skylab-sim-hud-message {
   padding: 7px 9px;
   border: 1px dashed var(--jld-sky-border);
-  border-radius: 7px;
+  border-radius: 3px;
   color: var(--jld-sky-muted);
   font-size: 11px;
   line-height: 1.4;
@@ -3146,9 +3146,9 @@
   bottom: 16px;
   max-width: 320px;
   padding: 10px 12px;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.94);
-  color: #fff;
+  border-radius: 3px;
+  background: var(--fd-ui-text);
+  color: var(--fd-ui-text);
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 160ms ease, transform 160ms ease;
@@ -3163,13 +3163,9 @@
 /* [UAV-IDE MODIFY] Keep ground-station controls readable in the narrow Lab sidebar. */
 .jld-skylab-groundstation-hero {
   padding: 16px;
-  border-radius: 14px;
-  background: linear-gradient(
-    155deg,
-    var(--jld-sky-panel),
-    var(--jld-sky-soft)
-  );
-  box-shadow: 0 10px 28px rgb(37 99 235 / 7%);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  box-shadow: none;
 }
 
 .jld-skylab-groundstation-head {
@@ -3183,9 +3179,9 @@
   width: 30px;
   height: 30px;
   padding: 10px;
-  border-radius: 13px;
-  background: #dbeafe;
-  color: #2563eb;
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 .jld-skylab-groundstation-head div {
@@ -3208,14 +3204,14 @@
 .jld-skylab-groundstation-state {
   flex: none;
   padding: 4px 9px;
-  border-radius: 999px;
+  border-radius: 3px;
   background: var(--jld-sky-soft);
   color: var(--jld-sky-muted);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-groundstation-state[data-running='1'] {
-  background: rgb(22 163 74 / 12%);
+  background: var(--fd-ui-success-bg);
   color: var(--jld-sky-green);
 }
 
@@ -3231,7 +3227,7 @@
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--jld-sky-border);
-  border-radius: 10px;
+  border-radius: 3px;
   background: var(--jld-sky-panel);
 }
 
@@ -3271,7 +3267,7 @@
 
 .jld-skylab-groundstation-main-actions .jld-skylab-btn {
   min-height: 38px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .jld-skylab-groundstation-controls
@@ -3291,18 +3287,18 @@ body[data-jp-theme-light='false']
 body[data-jp-theme-name*='Dark']
   .jld-skylab-groundstation-head
   .jld-skylab-rail-icon {
-  background: #172554;
-  color: #93c5fd;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-center,
 body[data-jp-theme-name*='Dark'] .jld-skylab-center {
-  --jld-sky-bg: #111827;
-  --jld-sky-panel: #111827;
-  --jld-sky-soft: #172033;
-  --jld-sky-border: #334155;
-  --jld-sky-text: #f8fafc;
-  --jld-sky-muted: #94a3b8;
+  --jld-sky-bg: var(--fd-ui-bg);
+  --jld-sky-panel: var(--fd-ui-surface);
+  --jld-sky-soft: var(--fd-ui-surface-alt);
+  --jld-sky-border: var(--fd-ui-border);
+  --jld-sky-text: var(--fd-ui-text);
+  --jld-sky-muted: var(--fd-ui-muted);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-hud-drawer,
@@ -3313,7 +3309,7 @@ body[data-jp-theme-light='false'] .jld-skylab-hud-empty,
 body[data-jp-theme-name*='Dark'] .jld-skylab-hud-empty,
 body[data-jp-theme-light='false'] .jld-skylab-sensor-panel,
 body[data-jp-theme-name*='Dark'] .jld-skylab-sensor-panel {
-  background: #111827;
+  background: var(--fd-ui-surface);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-hud-head,
@@ -3326,14 +3322,14 @@ body[data-jp-theme-light='false'] .jld-skylab-sensor-panel > header,
 body[data-jp-theme-name*='Dark'] .jld-skylab-sensor-panel > header,
 body[data-jp-theme-light='false'] .jld-skylab-sensor-panel aside,
 body[data-jp-theme-name*='Dark'] .jld-skylab-sensor-panel aside {
-  background: #172033;
+  background: var(--fd-ui-surface-alt);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-hud-sensors button,
 body[data-jp-theme-name*='Dark'] .jld-skylab-hud-sensors button {
-  border-color: #334155;
-  background: #172554;
-  color: #bfdbfe;
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 @media (max-width: 900px) {
@@ -3363,26 +3359,54 @@ body[data-jp-theme-light='false'] .jld-skylab-sim-controls,
 body[data-jp-theme-name*='Dark'] .jld-skylab-sim-controls,
 body[data-jp-theme-light='false'] .jld-skylab-sim-hud-summary,
 body[data-jp-theme-name*='Dark'] .jld-skylab-sim-hud-summary {
-  background: #172033;
+  background: var(--fd-ui-surface-alt);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-device-library-entry,
 body[data-jp-theme-name*='Dark'] .jld-skylab-device-library-entry {
-  border-color: #334155;
-  background: linear-gradient(135deg, #111827, #172554);
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-device-library-icon,
 body[data-jp-theme-name*='Dark'] .jld-skylab-device-library-icon,
 body[data-jp-theme-light='false'] .jld-skylab-device-library-meta > span,
 body[data-jp-theme-name*='Dark'] .jld-skylab-device-library-meta > span {
-  background: #172554;
-  color: #93c5fd;
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
 }
 
 body[data-jp-theme-light='false'] .jld-skylab-device-debug-action,
 body[data-jp-theme-name*='Dark'] .jld-skylab-device-debug-action {
-  border-color: #1d4ed8;
-  background: #172554;
-  color: #bfdbfe;
+  border-color: var(--fd-ui-accent);
+  background: var(--fd-ui-surface-alt);
+  color: var(--fd-ui-accent);
+}
+
+/* [UAV-IDE MODIFY] Style existing FleetDock controls without changing their DOM or IPC actions. */
+.jld-skylab-center {
+  font-family: var(--fd-ui-font);
+}
+
+.jld-skylab-btn[data-variant='primary'] {
+  border-color: var(--fd-ui-button);
+  background: var(--fd-ui-button);
+  color: var(--fd-ui-on-accent);
+}
+
+.jld-skylab-btn[data-variant='primary']:hover:not(:disabled) {
+  background: var(--fd-ui-button-hover);
+}
+
+.jld-skylab-btn:focus-visible,
+.jld-skylab-rail-btn:focus-visible,
+.jld-skylab-center input:focus-visible,
+.jld-skylab-center select:focus-visible,
+.jld-skylab-center textarea:focus-visible {
+  outline: 1px solid var(--fd-ui-accent);
+  outline-offset: 1px;
+}
+
+.jld-skylab-drawer strong {
+  font-weight: 500;
 }

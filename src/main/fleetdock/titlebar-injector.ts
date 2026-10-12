@@ -4,6 +4,7 @@
 import type { WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readFleetDockCss } from './styles';
 
 // [UAV-IDE MODIFY] Keep FleetDock desktop chrome outside the upstream titlebar document.
 export class FleetDockTitleBarInjector {
@@ -52,6 +53,9 @@ export class FleetDockTitleBarInjector {
   }
 
   private _readAsset(fileName: string): string {
+    if (fileName.endsWith('.css')) {
+      return readFleetDockCss(fileName);
+    }
     return fs.readFileSync(
       path.resolve(__dirname, '..', '..', '..', 'app-assets', fileName),
       'utf8'

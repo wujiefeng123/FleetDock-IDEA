@@ -5,6 +5,7 @@ import { app, BrowserWindow, screen, WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DarkThemeBGColor, LightThemeBGColor } from '../utils';
+import { readFleetDockCss } from './styles';
 
 type FleetDockHudDevice = {
   id?: string;
@@ -230,9 +231,11 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);c
 .model{position:absolute;left:50%;top:50%;width:138px;height:88px;transform-style:preserve-3d;transform:translate(-50%,-50%) rotateZ(var(--yaw)) rotateX(var(--pitch)) rotateY(var(--roll));transition:transform 420ms linear}.model i,.model b,.model em{position:absolute;display:block;box-sizing:border-box}.arm{left:50%;top:50%;width:114px;height:5px;margin-left:-57px;margin-top:-2.5px;border-radius:999px;background:linear-gradient(90deg,rgba(15,23,42,.18),var(--blue),rgba(15,23,42,.18));transform-origin:50% 50%}.arm-b{transform:rotateZ(90deg)}.body-shape{left:50%;top:50%;width:32px;height:20px;margin-left:-16px;margin-top:-10px;border:1px solid rgba(37,99,235,.36);border-radius:50% 50% 44% 44%;background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(219,234,254,.86));box-shadow:0 8px 18px rgba(37,99,235,.18)}.nose{left:50%;top:50%;width:9px;height:16px;margin-left:-4.5px;margin-top:-27px;clip-path:polygon(50% 0,100% 100%,0 100%);background:var(--cyan)}.rotor{width:22px;height:22px;border:2px solid rgba(37,99,235,.5);border-radius:999px;background:radial-gradient(circle,rgba(6,182,212,.18) 0 34%,rgba(255,255,255,.7) 36% 100%);box-shadow:0 6px 14px rgba(15,23,42,.12)}.r1{left:3px;top:1px}.r2{right:3px;top:1px}.r3{left:3px;bottom:1px}.r4{right:3px;bottom:1px}
 .readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.readout{min-width:0;padding:0 2px}.readout span,.readout strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.readout span{color:var(--muted);font-size:10px;line-height:1.15}.readout strong{margin-top:1px;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.25}
 body .readout[data-state="warn"] strong{color:#b91c1c}.hud-foot{display:grid;grid-template-columns:minmax(0,1fr);gap:2px}.angles{display:flex;justify-content:space-between;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;line-height:1.2}
+/* [UAV-IDE MODIFY] Keep the standalone HUD palette consistent with the desktop without changing instrument geometry. */
+${readFleetDockCss('fleetdock-hud-extension.css')}
 </style>
 </head>
-<body><div id="app" class="hud"></div>
+<body class="${dark ? 'app-ui-dark' : ''}"><div id="app" class="hud"></div>
 <script>
 const target=${payload};
 const app=document.getElementById('app');

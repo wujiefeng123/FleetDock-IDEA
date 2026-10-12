@@ -1,0 +1,39 @@
+/* [UAV-IDE MODIFY] Match standalone HUD chrome while preserving telemetry graphics and animation. */
+body {
+  --bg: var(--fd-ui-bg);
+  --panel: var(--fd-ui-surface);
+  --soft: var(--fd-ui-surface-alt);
+  --border: var(--fd-ui-border);
+  --text: var(--fd-ui-text);
+  --muted: var(--fd-ui-muted);
+  --blue: var(--fd-ui-accent);
+  --green: var(--fd-ui-success);
+  --danger: var(--fd-ui-danger);
+  font-family: var(--fd-ui-font);
+}
+
+.head strong,
+.metric strong {
+  font-weight: 500;
+}
+
+.pill,
+.attitude,
+.scene,
+.metric,
+.position {
+  border-radius: 3px;
+}
+
+.attitude {
+  background: var(--fd-ui-surface);
+}
+
+.scene {
+  background: var(--fd-ui-surface-alt);
+}
+
+.pill[data-online='1'] {
+  color: var(--fd-ui-success);
+  background: var(--fd-ui-success-bg);
+}

@@ -1,0 +1,100 @@
+/* [UAV-IDE MODIFY] Share a restrained desktop palette without changing view structure or behavior. */
+:root {
+  --fd-ui-bg: #f3f3f3;
+  --fd-ui-surface: #ffffff;
+  --fd-ui-surface-alt: #f6f6f6;
+  --fd-ui-input: #ffffff;
+  --fd-ui-border: #dedede;
+  --fd-ui-border-strong: #b8b8b8;
+  --fd-ui-text: #292929;
+  --fd-ui-muted: #616161;
+  --fd-ui-accent: #005fb8;
+  --fd-ui-button: #0078d4;
+  --fd-ui-button-hover: #0069b9;
+  --fd-ui-on-accent: #ffffff;
+  --fd-ui-selection: #e4effa;
+  --fd-ui-hover: #ebebeb;
+  --fd-ui-success: #167345;
+  --fd-ui-success-bg: #eaf5ee;
+  --fd-ui-warning: #8a5700;
+  --fd-ui-warning-bg: #fff3d6;
+  --fd-ui-danger: #c42b1c;
+  --fd-ui-danger-button: #c42b1c;
+  --fd-ui-danger-bg: #fcebea;
+  --fd-ui-scrollbar: rgb(100 100 100 / 30%);
+  --fd-ui-scrollbar-hover: rgb(100 100 100 / 50%);
+  --fd-ui-popup-shadow: 0 4px 16px rgb(0 0 0 / 16%);
+  --fd-ui-font: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont,
+    Helvetica, Arial, sans-serif;
+}
+
+body.app-ui-dark,
+body[data-jp-theme-light='false'],
+body[data-jp-theme-name*='Dark'] {
+  color-scheme: dark;
+  --fd-ui-bg: #181818;
+  --fd-ui-surface: #1f1f1f;
+  --fd-ui-surface-alt: #252526;
+  --fd-ui-input: #313131;
+  --fd-ui-border: #3c3c3c;
+  --fd-ui-border-strong: #6b6b6b;
+  --fd-ui-text: #d4d4d4;
+  --fd-ui-muted: #a4a4a4;
+  --fd-ui-accent: #4daafc;
+  --fd-ui-button: #0078d4;
+  --fd-ui-button-hover: #1686d9;
+  --fd-ui-selection: #264f78;
+  --fd-ui-hover: #2b2d2e;
+  --fd-ui-success: #89d185;
+  --fd-ui-success-bg: #203b29;
+  --fd-ui-warning: #d7ba7d;
+  --fd-ui-warning-bg: #3c311e;
+  --fd-ui-danger: #f48771;
+  --fd-ui-danger-bg: #442724;
+  --fd-ui-scrollbar: rgb(140 140 140 / 32%);
+  --fd-ui-scrollbar-hover: rgb(140 140 140 / 52%);
+  --fd-ui-popup-shadow: 0 4px 16px rgb(0 0 0 / 36%);
+}
+
+/* Resolve compatibility aliases on the body so theme changes also update inherited values. */
+body {
+  color-scheme: light;
+  --skylab-bg: var(--fd-ui-bg);
+  --skylab-bg-soft: var(--fd-ui-surface-alt);
+  --skylab-surface: var(--fd-ui-surface);
+  --skylab-surface-solid: var(--fd-ui-surface);
+  --skylab-border: var(--fd-ui-border);
+  --skylab-border-strong: var(--fd-ui-border-strong);
+  --skylab-text: var(--fd-ui-text);
+  --skylab-muted: var(--fd-ui-muted);
+  --skylab-blue: var(--fd-ui-accent);
+  --skylab-blue-soft: var(--fd-ui-selection);
+  --skylab-cyan-soft: var(--fd-ui-selection);
+  --skylab-file-bg: var(--fd-ui-surface-alt);
+  --jld-sky-bg: var(--fd-ui-bg);
+  --jld-sky-panel: var(--fd-ui-surface);
+  --jld-sky-soft: var(--fd-ui-surface-alt);
+  --jld-sky-border: var(--fd-ui-border);
+  --jld-sky-text: var(--fd-ui-text);
+  --jld-sky-muted: var(--fd-ui-muted);
+  --jld-sky-blue: var(--fd-ui-accent);
+  --jld-sky-cyan: var(--fd-ui-accent);
+  --jld-sky-green: var(--fd-ui-success);
+  --jld-sky-warn: var(--fd-ui-warning);
+  --jld-sky-danger: var(--fd-ui-danger);
+  --jp-brand-color0: var(--fd-ui-button-hover);
+  --jp-brand-color1: var(--fd-ui-button);
+  --jp-brand-color2: var(--fd-ui-accent);
+  --jp-brand-color3: var(--fd-ui-selection);
+  --jp-layout-color0: var(--fd-ui-bg);
+  --jp-layout-color1: var(--fd-ui-surface);
+  --jp-layout-color2: var(--fd-ui-surface-alt);
+  --jp-layout-color3: var(--fd-ui-hover);
+  --jp-layout-color4: var(--fd-ui-border);
+  --jp-border-color0: var(--fd-ui-border-strong);
+  --jp-border-color1: var(--fd-ui-border);
+  --jp-border-color2: var(--fd-ui-border);
+  --jp-ui-font-color1: var(--fd-ui-text);
+  --jp-ui-font-color2: var(--fd-ui-muted);
+  --jp-ui-font-color3: var(--fd-ui-muted);
+}

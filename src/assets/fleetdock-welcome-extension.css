@@ -1,5 +1,6 @@
 /* [UAV-IDE MODIFY] FleetDock welcome shell stays in an isolated asset so the
- * upstream WelcomeView markup remains replaceable during future upgrades. */
+ * upstream WelcomeView markup remains replaceable during future upgrades.
+ * The visual refresh preserves the existing layout and action contracts. */
 html,
 body {
   width: 100%;
@@ -7,27 +8,15 @@ body {
 }
 
 body {
-  color: #111827;
-  background: radial-gradient(
-      circle at 16% 4%,
-      rgb(6 182 212 / 16%),
-      transparent 28%
-    ),
-    radial-gradient(circle at 88% 12%, rgb(37 99 235 / 12%), transparent 32%),
-    #f6f8fb;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
   font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'Microsoft YaHei', Helvetica, Arial, sans-serif;
 }
 
 body.app-ui-dark {
-  color: #e5e7eb;
-  background: radial-gradient(
-      circle at 16% 4%,
-      rgb(6 182 212 / 12%),
-      transparent 28%
-    ),
-    radial-gradient(circle at 88% 12%, rgb(37 99 235 / 12%), transparent 32%),
-    #0f172a;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
 }
 
 * {
@@ -45,14 +34,14 @@ body.app-ui-dark {
 
 *::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
-  border-radius: 999px;
-  background: rgb(37 99 235 / 18%);
+  border-radius: 3px;
+  background: var(--fd-ui-scrollbar);
   background-clip: content-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
   border-width: 2px;
-  background: rgb(37 99 235 / 34%);
+  background: var(--fd-ui-scrollbar-hover);
   background-clip: content-box;
 }
 
@@ -76,14 +65,14 @@ body.app-ui-dark {
   flex: 0 0 78px;
   align-items: center;
   padding: 0 28px;
-  border-bottom: 1px solid #e2e8f0;
-  background: rgb(255 255 255 / 86%);
-  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--fd-ui-border);
+  background: var(--fd-ui-surface);
+  backdrop-filter: none;
 }
 
 .app-ui-dark .fleetdock-welcome-header {
-  border-bottom-color: #334155;
-  background: rgb(15 23 42 / 88%);
+  border-bottom-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 .fleetdock-welcome-brand {
@@ -100,12 +89,12 @@ body.app-ui-dark {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 3px;
   color: #fff;
-  background: linear-gradient(135deg, #2563eb, #06b6d4);
-  box-shadow: 0 12px 28px rgb(37 99 235 / 24%);
+  background: var(--fd-ui-button);
+  box-shadow: none;
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .fleetdock-welcome-brand-logo svg {
@@ -116,19 +105,19 @@ body.app-ui-dark {
 
 .fleetdock-welcome-brand-name {
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0.2px;
 }
 
 .fleetdock-welcome-brand-subtitle {
   margin-top: 2px;
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-ui-dark .fleetdock-welcome-brand-subtitle {
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-welcome-content {
@@ -149,18 +138,14 @@ body.app-ui-dark {
   justify-content: space-between;
   overflow: hidden;
   padding: 26px 28px;
-  border: 1px solid #dbeafe;
-  border-radius: 18px;
-  background: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 96%),
-    rgb(239 246 255 / 94%)
-  );
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface-alt);
 }
 
 .app-ui-dark .fleetdock-welcome-hero {
-  border-color: #334155;
-  background: linear-gradient(135deg, rgb(30 41 59 / 95%), rgb(15 23 42 / 95%));
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 .fleetdock-welcome-hero::after {
@@ -170,7 +155,7 @@ body.app-ui-dark {
   width: 220px;
   height: 72px;
   transform: rotate(-11deg);
-  border-top: 2px solid rgb(6 182 212 / 35%);
+  border-top: 2px solid var(--fd-ui-border);
   border-radius: 50%;
   content: '';
 }
@@ -178,17 +163,17 @@ body.app-ui-dark {
 .fleetdock-welcome-hero-title {
   margin: 0 0 8px;
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .fleetdock-welcome-hero-text {
   margin: 0;
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 14px;
 }
 
 .app-ui-dark .fleetdock-welcome-hero-text {
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-welcome-hero-mark {
@@ -196,14 +181,14 @@ body.app-ui-dark {
   width: 108px;
   height: 78px;
   flex: 0 0 108px;
-  color: #2563eb;
+  color: var(--fd-ui-accent);
 }
 
 .fleetdock-welcome-flight-path {
   position: absolute;
   inset: 14px 6px 8px;
   transform: rotate(-12deg);
-  border: 2px dashed rgb(37 99 235 / 38%);
+  border: 2px dashed var(--fd-ui-border);
   border-left-color: transparent;
   border-radius: 50%;
 }
@@ -214,9 +199,9 @@ body.app-ui-dark {
   right: 10px;
   z-index: 1;
   transform: rotate(32deg);
-  color: #06b6d4;
+  color: var(--fd-ui-accent);
   font-size: 28px;
-  text-shadow: 0 8px 18px rgb(6 182 212 / 28%);
+  text-shadow: none;
 }
 
 .fleetdock-welcome-toolbar {
@@ -234,18 +219,18 @@ body.app-ui-dark {
   align-items: center;
   gap: 10px;
   padding: 0 14px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #fff;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
 }
 
 .app-ui-dark .fleetdock-welcome-search {
-  border-color: #334155;
-  background: #1e293b;
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface);
 }
 
 .fleetdock-welcome-search-icon {
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 18px;
 }
 
@@ -268,11 +253,11 @@ body.app-ui-dark {
 .fleetdock-welcome-path-row button {
   height: 44px;
   padding: 0 18px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  color: #111827;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface);
+  box-shadow: none;
   cursor: pointer;
   font: inherit;
   transition: border-color 0.18s ease, background 0.18s ease,
@@ -281,17 +266,17 @@ body.app-ui-dark {
 
 .fleetdock-welcome-button-primary,
 .fleetdock-welcome-actions button:last-child {
-  border-color: #2563eb;
+  border-color: var(--fd-ui-accent);
   color: #fff;
-  background: #2563eb;
-  box-shadow: 0 10px 24px rgb(37 99 235 / 18%);
+  background: var(--fd-ui-selection);
+  box-shadow: none;
 }
 
 .fleetdock-welcome-button:hover,
 .fleetdock-welcome-actions button:hover,
 .fleetdock-welcome-path-row button:hover {
-  border-color: #93c5fd;
-  box-shadow: 0 6px 18px rgb(37 99 235 / 10%);
+  border-color: var(--fd-ui-border);
+  box-shadow: none;
 }
 
 .fleetdock-welcome-button:focus-visible,
@@ -299,23 +284,23 @@ body.app-ui-dark {
 .fleetdock-welcome-path-row button:focus-visible,
 .fleetdock-welcome-field input:focus,
 .fleetdock-welcome-field textarea:focus {
-  outline: 2px solid rgb(6 182 212 / 45%);
+  outline: 2px solid var(--fd-ui-border);
   outline-offset: 2px;
 }
 
 .app-ui-dark .fleetdock-welcome-button,
 .app-ui-dark .fleetdock-welcome-actions button,
 .app-ui-dark .fleetdock-welcome-path-row button {
-  border-color: #334155;
-  color: #e5e7eb;
-  background: #1e293b;
+  border-color: var(--fd-ui-border);
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface);
 }
 
 .app-ui-dark .fleetdock-welcome-button-primary,
 .app-ui-dark .fleetdock-welcome-actions button:last-child {
-  border-color: #2563eb;
+  border-color: var(--fd-ui-accent);
   color: #fff;
-  background: #2563eb;
+  background: var(--fd-ui-selection);
 }
 
 .fleetdock-welcome-section-heading {
@@ -328,17 +313,17 @@ body.app-ui-dark {
 
 .fleetdock-welcome-section-title {
   margin: 0;
-  color: #111827;
+  color: var(--fd-ui-text);
   font-size: 17px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .app-ui-dark .fleetdock-welcome-section-title {
-  color: #e5e7eb;
+  color: var(--fd-ui-text);
 }
 
 .fleetdock-welcome-count {
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 13px;
 }
 
@@ -346,15 +331,15 @@ body.app-ui-dark {
   min-height: 0;
   padding: 12px;
   overflow: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: rgb(255 255 255 / 88%);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
   scrollbar-gutter: stable;
 }
 
 .app-ui-dark .fleetdock-welcome-list {
-  border-color: #334155;
-  background: rgb(15 23 42 / 68%);
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 .fleetdock-welcome-recent-list {
@@ -374,7 +359,7 @@ body.app-ui-dark {
   align-items: center;
   gap: 18px;
   padding: 18px 16px;
-  border-radius: 12px;
+  border-radius: 3px;
   cursor: pointer;
   transition: background 0.18s ease, box-shadow 0.18s ease;
 }
@@ -384,17 +369,17 @@ body.app-ui-dark {
 }
 
 .fleetdock-welcome-list .recent-session-row:hover {
-  background: rgb(37 99 235 / 6%);
-  box-shadow: inset 0 0 0 1px rgb(37 99 235 / 12%);
+  background: var(--fd-ui-selection);
+  box-shadow: none;
 }
 
 .fleetdock-welcome-list .recent-session-row:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--fd-ui-accent);
   outline-offset: -2px;
 }
 
 .fleetdock-welcome-list .recent-session-row[data-fleetdock-opening='true'] {
-  background: rgb(37 99 235 / 10%);
+  background: var(--fd-ui-selection);
   pointer-events: none;
 }
 
@@ -405,11 +390,11 @@ body.app-ui-dark {
   flex: 0 0 54px;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 3px;
   color: #fff;
-  background: var(--fleetdock-avatar-color, #2563eb);
+  background: var(--fleetdock-avatar-color, var(--fd-ui-selection));
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .fleetdock-welcome-recent-main {
@@ -422,18 +407,18 @@ body.app-ui-dark {
 .fleetdock-welcome-list .recent-session-link {
   color: inherit;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .fleetdock-welcome-list .recent-session-detail {
   margin-top: 4px;
   padding-left: 0;
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 13px;
 }
 
 .app-ui-dark .fleetdock-welcome-list .recent-session-detail {
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-welcome-list .recent-session-delete {
@@ -441,7 +426,7 @@ body.app-ui-dark {
   height: 34px;
   margin-left: 0;
   padding: 8px;
-  border-radius: 10px;
+  border-radius: 3px;
 }
 
 .fleetdock-welcome-list .recent-session-row:hover .recent-session-delete {
@@ -454,7 +439,7 @@ body.app-ui-dark {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: #64748b;
+  color: var(--fd-ui-muted);
   font-size: 14px;
   text-align: center;
 }
@@ -464,7 +449,7 @@ body.app-ui-dark {
 }
 
 .fleetdock-welcome-expander a {
-  color: #2563eb;
+  color: var(--fd-ui-accent);
 }
 
 .fleetdock-welcome-modal {
@@ -480,11 +465,11 @@ body.app-ui-dark {
 .fleetdock-welcome-dialog {
   width: min(620px, calc(100vw - 48px));
   padding: 24px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  color: #111827;
-  background: #fff;
-  box-shadow: 0 20px 60px rgb(15 23 42 / 20%);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface);
+  box-shadow: var(--fd-ui-popup-shadow);
 }
 
 .fleetdock-welcome-dialog h2 {
@@ -514,10 +499,10 @@ body.app-ui-dark {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
   color: inherit;
-  background: #fff;
+  background: var(--fd-ui-surface);
   font: inherit;
 }
 
@@ -540,19 +525,19 @@ body.app-ui-dark {
 .fleetdock-welcome-status {
   min-height: 20px;
   margin-top: 10px;
-  color: #dc2626;
+  color: var(--fd-ui-danger);
 }
 
 .app-ui-dark .fleetdock-welcome-dialog {
-  border-color: #334155;
-  color: #e5e7eb;
-  background: #1e293b;
+  border-color: var(--fd-ui-border);
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface);
 }
 
 .app-ui-dark .fleetdock-welcome-field input,
 .app-ui-dark .fleetdock-welcome-field textarea {
-  border-color: #334155;
-  background: #0f172a;
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface);
 }
 
 body > #notification-panel {
@@ -561,15 +546,15 @@ body > #notification-panel {
   bottom: 18px;
   left: 18px;
   z-index: 100;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: rgb(255 255 255 / 96%);
-  box-shadow: 0 12px 34px rgb(15 23 42 / 14%);
+  border: 1px solid var(--fd-ui-border);
+  border-radius: 3px;
+  background: var(--fd-ui-surface);
+  box-shadow: none;
 }
 
 .app-ui-dark body > #notification-panel {
-  border-color: #334155;
-  background: rgb(30 41 59 / 96%);
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface-alt);
 }
 
 @media (max-height: 620px) {
@@ -622,4 +607,53 @@ body > #notification-panel {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* [UAV-IDE MODIFY] Match the desktop control palette while retaining every welcome action. */
+body,
+.fleetdock-welcome-dialog {
+  font-family: var(--fd-ui-font);
+}
+
+.fleetdock-welcome-button-primary,
+.fleetdock-welcome-actions button:last-child,
+.app-ui-dark .fleetdock-welcome-button-primary,
+.app-ui-dark .fleetdock-welcome-actions button:last-child {
+  border-color: var(--fd-ui-button);
+  color: var(--fd-ui-on-accent);
+  background: var(--fd-ui-button);
+}
+
+.fleetdock-welcome-button-primary:hover,
+.fleetdock-welcome-actions button:last-child:hover,
+.app-ui-dark .fleetdock-welcome-button-primary:hover,
+.app-ui-dark .fleetdock-welcome-actions button:last-child:hover {
+  background: var(--fd-ui-button-hover);
+}
+
+.fleetdock-welcome-search:focus-within {
+  border-color: var(--fd-ui-accent);
+}
+
+.fleetdock-welcome-hero::after,
+.fleetdock-welcome-flight-path {
+  opacity: 0.2;
+}
+
+.fleetdock-welcome-avatar {
+  color: var(--fd-ui-accent);
+  background: var(--fd-ui-selection);
+}
+
+body.app-ui-dark > #notification-panel {
+  border-color: var(--fd-ui-border);
+  background: var(--fd-ui-surface);
+}
+
+/* The upstream toolkit updates body colors after load; keep this scoped welcome skin authoritative. */
+body:has(.fleetdock-welcome-shell),
+body.app-ui-dark:has(.fleetdock-welcome-shell) {
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-bg);
+  font-family: var(--fd-ui-font);
 }

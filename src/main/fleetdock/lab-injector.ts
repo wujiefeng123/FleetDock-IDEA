@@ -4,6 +4,7 @@
 import type { WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readFleetDockCss } from './styles';
 
 interface IAttachedLabRenderer {
   webContents: WebContents;
@@ -88,6 +89,9 @@ export class FleetDockLabInjector {
   }
 
   private _readAsset(fileName: string): string {
+    if (fileName.endsWith('.css')) {
+      return readFleetDockCss(fileName);
+    }
     // Compiled location: build/out/main/fleetdock. App assets: build/app-assets.
     const assetPath = path.resolve(
       __dirname,

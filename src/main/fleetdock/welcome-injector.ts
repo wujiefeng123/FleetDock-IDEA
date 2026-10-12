@@ -4,6 +4,7 @@
 import type { WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readFleetDockCss } from './styles';
 
 export class FleetDockWelcomeInjector {
   attach(webContents: WebContents): Promise<void> {
@@ -80,6 +81,9 @@ export class FleetDockWelcomeInjector {
   }
 
   private _readAsset(fileName: string): string {
+    if (fileName.endsWith('.css')) {
+      return readFleetDockCss(fileName);
+    }
     return fs.readFileSync(
       path.resolve(__dirname, '..', '..', '..', 'app-assets', fileName),
       'utf8'

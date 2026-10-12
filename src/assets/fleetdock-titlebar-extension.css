@@ -1,50 +1,44 @@
 /* [UAV-IDE MODIFY] Match the persistent Electron chrome to the FleetDock
  * blue-white workspace without changing the upstream titlebar document. */
 body.fleetdock-titlebar {
-  color: #334155;
-  background: linear-gradient(
-      90deg,
-      rgb(248 251 255 / 98%),
-      rgb(238 246 255 / 98%)
-    ),
-    #eef6ff;
+  color: var(--fd-ui-muted);
+  background: var(--fd-ui-surface-alt);
 }
 
 body.fleetdock-titlebar.app-ui-dark {
-  color: #cbd5e1;
-  background: linear-gradient(90deg, rgb(15 23 42 / 98%), rgb(30 41 59 / 98%)),
-    #0f172a;
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
 }
 
 .fleetdock-titlebar .titlebar {
   height: 29px;
-  border-bottom: 1px solid #dbeafe;
+  border-bottom: 1px solid var(--fd-ui-border);
   background: transparent;
-  box-shadow: 0 1px 0 rgb(255 255 255 / 70%);
+  box-shadow: none;
   line-height: 28px;
 }
 
 .fleetdock-titlebar.app-ui-dark .titlebar {
-  border-bottom-color: #334155;
+  border-bottom-color: var(--fd-ui-border);
   box-shadow: none;
 }
 
 .fleetdock-titlebar .app-title {
-  color: #0f172a;
-  font-weight: 600;
+  color: var(--fd-ui-text);
+  font-weight: 500;
   letter-spacing: 0.1px;
 }
 
 .fleetdock-titlebar:not(.active) .app-title {
-  color: #64748b;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar.app-ui-dark .app-title {
-  color: #e5e7eb;
+  color: var(--fd-ui-text);
 }
 
 .fleetdock-titlebar.app-ui-dark:not(.active) .app-title {
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar #right-widgets {
@@ -60,9 +54,9 @@ body.fleetdock-titlebar.app-ui-dark {
 }
 
 .fleetdock-titlebar.app-ui-dark #server-button {
-  border-color: #334155;
-  color: #cbd5e1;
-  background: rgb(15 23 42 / 48%);
+  border-color: var(--fd-ui-border);
+  color: var(--fd-ui-text);
+  background: var(--fd-ui-surface-alt);
 }
 
 .fleetdock-titlebar #server-icon {
@@ -77,11 +71,11 @@ body.fleetdock-titlebar.app-ui-dark {
 }
 
 .fleetdock-titlebar #server-icon svg path {
-  fill: #2563eb;
+  fill: var(--fd-ui-accent);
 }
 
 .fleetdock-titlebar.app-ui-dark #server-icon svg path {
-  fill: #38bdf8;
+  fill: var(--fd-ui-accent);
 }
 
 .fleetdock-titlebar #server-notification-badge {
@@ -95,52 +89,59 @@ body.fleetdock-titlebar.app-ui-dark {
   width: 28px;
   height: 26px;
   margin: 1px 2px 0 0;
-  border-radius: 7px;
+  border-radius: 3px;
 }
 
 .fleetdock-titlebar #menu-button svg path,
 .fleetdock-titlebar #control-box svg {
-  fill: #64748b;
+  fill: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar.app-ui-dark #menu-button svg path,
 .fleetdock-titlebar.app-ui-dark #control-box svg {
-  fill: #94a3b8;
+  fill: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar #control-box {
   height: 28px;
   margin: 0 4px 0 0;
-  color: #64748b;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar.app-ui-dark #control-box {
-  color: #94a3b8;
+  color: var(--fd-ui-muted);
 }
 
 .fleetdock-titlebar .control-box-button {
   width: 20px;
   height: 27px;
   padding: 0 5px;
-  border-radius: 7px;
+  border-radius: 3px;
 }
 
 .fleetdock-titlebar .control-box-button:hover,
 .fleetdock-titlebar #menu-button:hover,
 .fleetdock-titlebar #server-button:not(.disabled):hover {
-  background: rgb(37 99 235 / 10%);
+  background: var(--fd-ui-selection);
 }
 
 .fleetdock-titlebar.app-ui-dark .control-box-button:hover,
 .fleetdock-titlebar.app-ui-dark #menu-button:hover,
 .fleetdock-titlebar.app-ui-dark #server-button:not(.disabled):hover {
-  background: rgb(59 130 246 / 16%);
+  background: var(--fd-ui-selection);
 }
 
 .fleetdock-titlebar #close-button:hover {
-  background: #ef4444;
+  background: var(--fd-ui-danger-button);
 }
 
 .fleetdock-titlebar #close-button:hover svg {
   fill: #fff;
+}
+
+/* [UAV-IDE MODIFY] Use the same neutral chrome as the workspace without changing window controls. */
+body.fleetdock-titlebar,
+body.fleetdock-titlebar.app-ui-dark {
+  background: var(--fd-ui-bg);
+  font-family: var(--fd-ui-font);
 }
