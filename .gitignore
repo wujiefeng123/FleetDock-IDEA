@@ -31,3 +31,14 @@ __pycache__
 env_installer/jlab_server/
 env_installer/jlab_server.tar.gz
 
+# QGroundControl is staged from an audited installation during Windows packaging.
+dist-resources/win/lib/QGroundControl/
+
+# Local delivery artifacts and previews are not collaboration source inputs.
+/delivery/
+/outputs/
+/jupyterlab-desktop.zip
+
+# This unreviewed external-project helper is not part of FleetDock development.
+/dist-resources/skylab-runtime/fleetdock-src/.codex/skills/setup-project-airsim-ue5/
+

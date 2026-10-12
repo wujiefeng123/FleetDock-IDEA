@@ -10,6 +10,10 @@
   remain authoritative.
 - FleetDock-specific behavior is implemented in isolated modules and attached
   through small lifecycle hooks.
+- Product identity uses package name `fleetdock-idea`, application ID
+  `com.fleetdock.idea`, and a fixed `fleetdock-idea` user-data directory.
+- Legacy `skylab-*` runtime resources and protocol markers remain unchanged;
+  they are independent compatibility contracts, not user-visible branding.
 - Large generated runtimes and simulation binaries are not imported until
   their provenance, packaging need, and repository policy are reviewed.
 
@@ -63,13 +67,19 @@ Each layer must:
 
 ## Upstream update procedure
 
-The FleetDock branch is based directly on the official `origin` remote. For a
-future JupyterLab Desktop update:
+The FleetDock branch retains the official history. Team collaboration uses
+`origin` (`https://github.com/wujiefeng123/FleetDock-IDEA.git`), while official
+updates use `upstream` (`https://github.com/jupyterlab/jupyterlab-desktop.git`).
+See `COLLABORATION.md` for clone, feature-branch, and upgrade-review commands.
+For a future JupyterLab Desktop update, start with a clean working tree and
+the latest team branch, then merge on a dedicated upgrade branch:
 
 ```powershell
-git fetch origin
 git switch codex/fleetdock-upstream-migration
-git merge --no-ff origin/master
+git pull --ff-only origin codex/fleetdock-upstream-migration
+git fetch upstream
+git switch -c codex/upgrade-jupyterlab-next
+git merge --no-ff upstream/master
 ```
 
 Resolve conflicts without copying an older upstream file over the newer one.

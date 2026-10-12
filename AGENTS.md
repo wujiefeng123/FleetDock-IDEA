@@ -28,8 +28,10 @@
   `D:\Git\ControlPlatform\application\jupyterlab-desktop`
 - 新迁移目标与当前开发仓库：
   `D:\Git\jupyterlab-desktop`
+- 团队协作远程：
+  `origin = https://github.com/wujiefeng123/FleetDock-IDEA.git`
 - 官方上游远程：
-  `origin = https://github.com/jupyterlab/jupyterlab-desktop.git`
+  `upstream = https://github.com/jupyterlab/jupyterlab-desktop.git`
 - 当前 FleetDock 迁移分支：
   `codex/fleetdock-upstream-migration`
 
@@ -57,7 +59,7 @@
 
 当前包身份：
 
-- 内部包名：`skylab-ide`
+- 内部包名：`fleetdock-idea`
 - 用户可见名称：`FleetDock IDEA`
 - 当前基础版本：以 `package.json` 为准
 
@@ -424,7 +426,7 @@ FleetDock 桌面运行时使用项目内置环境，不依赖任意系统 Python
 
 Windows 用户安装后的运行时通常位于：
 
-- `%APPDATA%\skylab-ide\jlab_server`
+- `%APPDATA%\fleetdock-idea\jlab_server`
 
 FleetDock SDK 的依赖聚合以其 `pyproject.toml` 为准。桌面打包应使用已审核的聚合 extra，例如 `full-prod`，不要在桌面脚本中重复维护一份依赖版本清单。
 
@@ -625,11 +627,11 @@ Bundle FleetDock production dependencies
 
 ### 14.4 推送
 
-当前 `origin` 是官方 JupyterLab Desktop 仓库，不是 FleetDock 私有远程。
+当前 `origin` 是 FleetDock 团队协作仓库；`upstream` 是官方 JupyterLab Desktop 仓库，仅用于获取上游更新。
 
 - 未经用户明确授权，不得执行 `git push`。
 - 推送前必须再次确认远程 URL、目标分支和权限。
-- 禁止向官方 `origin/master` 或其他上游维护分支推送 FleetDock 提交。
+- 禁止向官方 `upstream` 远程或其他上游维护分支推送 FleetDock 提交。
 - 禁止 force push，除非用户明确要求且目标分支确认无误。
 
 ### 14.5 禁止提交
@@ -669,9 +671,9 @@ Bundle FleetDock production dependencies
 标准流程：
 
 ```powershell
-git fetch origin
+git fetch upstream
 git switch codex/fleetdock-upstream-migration
-git merge --no-ff origin/master
+git merge --no-ff upstream/master
 ```
 
 若官方默认分支发生变化，以实际远程为准，并更新 `FLEETDOCK_MIGRATION.md`。

@@ -1,3 +1,18 @@
+# FleetDock IDEA
+
+FleetDock IDEA builds on JupyterLab Desktop for UAV and low-altitude application
+development. The team product branch is `codex/fleetdock-upstream-migration`.
+
+- [Development setup](dev.md)
+- [Team collaboration and official updates](COLLABORATION.md)
+- [Migration baseline and extension boundaries](FLEETDOCK_MIGRATION.md)
+- [Initial collaboration validation](COLLABORATION_BASELINE.md)
+- [Repository agent rules](AGENTS.md)
+
+The following documentation describes upstream JupyterLab Desktop. Its download
+links install the upstream application; consult the development setup above to
+build FleetDock IDEA from source.
+
 # JupyterLab Desktop
 
 JupyterLab Desktop is the cross-platform desktop application for [JupyterLab](https://github.com/jupyterlab/jupyterlab). It is the quickest and easiest way to get started with Jupyter notebooks on your personal computer, with the flexibility for advanced use cases.
