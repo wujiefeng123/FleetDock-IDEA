@@ -267,7 +267,7 @@
   },
   "dependencies": {
     "@lumino/signaling": "^2.1.5",
-    "ejs": "^6.0.1",
+    "ejs": "^7.0.1",
     "electron-log": "^5.4.4",
     "fast-xml-parser": "^5.10.1",
     "fix-path": "^3.0.0",
