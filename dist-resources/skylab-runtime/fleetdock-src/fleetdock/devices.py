@@ -92,6 +92,7 @@ class DeviceState:
     longitude_deg: Optional[float] = None
     absolute_altitude_m: Optional[float] = None
     relative_altitude_m: Optional[float] = None
+    global_position_updated_at_s: Optional[float] = None
     home_latitude_deg: Optional[float] = None
     home_longitude_deg: Optional[float] = None
     home_absolute_altitude_m: Optional[float] = None
@@ -194,13 +195,10 @@ class BaseDevice:
         self._lifecycle_state = DeviceLifecycleState.CREATED
         self._close_lock = RLock()
         self._manual_control_lock = RLock()
-        # [UAV-IDE MODIFY] Let the IDE diagnostics bridge observe standard
-        # command lifecycle events without owning or wrapping the device link.
-        # [UAV-IDE MODIFY] Let the IDE correlate SDK commands without opening another physical link.
         self._command_observer_lock = RLock()
         self._command_observers: list[Callable[..., None]] = []
         self._manual_control_session: Optional[ManualControlSession] = None
-        self.debug = DeviceDebug(self.sensors, device=self)
+        self.debug = DeviceDebug(self.sensors)
         self.avoidance = AvoidanceManager(self)
         self._state_unsubscribe = self.events.subscribe(self._update_state_from_event)
         try:
@@ -310,7 +308,11 @@ class BaseDevice:
         return frozenset(parse_standard_event_type(value) for value in self.profile.supported_events)
 
     def add_command_observer(self, observer: Callable[..., None]) -> Callable[[], None]:
-        """Observe standard command start/result events and return an unsubscribe callback."""
+        """订阅标准命令的开始、完成和失败阶段，并返回幂等取消订阅函数。
+
+        ``observer`` 接收 ``stage``、``command``、可选 ``response`` 和可选 ``error``；
+        观察器仅用于诊断和追踪，不得改变命令结果。观察器自身异常会被隔离，无返回值要求。
+        """
         if not callable(observer):
             raise TypeError("observer must be callable")
         with self._command_observer_lock:
@@ -381,8 +383,9 @@ class BaseDevice:
     ) -> StandardResponse:
         """执行标准命令并返回标准响应。
 
-        `command` 是 FleetDock 标准命令枚举，`params` 是命令参数，`timeout_s` 单位为秒，
-        `metadata` 会写入命令追踪上下文。通常由具体设备方法封装调用。
+        `command` 是 FleetDock 标准命令枚举，`params` 是命令参数，`timeout_s` 是可选正数秒值；
+        PX4 会把它传入同步 MAVSDK 等待边界，超时返回 ``COMMAND_TIMEOUT``。`metadata` 会写入
+        命令追踪上下文。通常由具体设备方法封装调用。
         """
         if self._lifecycle_state in {DeviceLifecycleState.CLOSING, DeviceLifecycleState.CLOSED}:
             return StandardResponse.operation_failure(
@@ -416,13 +419,9 @@ class BaseDevice:
         try:
             response = self.adapter.execute(standard_command)
         except Exception as error:
-            self._notify_command_observers(
-                "failed", standard_command, error=error
-            )
+            self._notify_command_observers("failed", standard_command, error=error)
             raise
-        self._notify_command_observers(
-            "completed", standard_command, response=response
-        )
+        self._notify_command_observers("completed", standard_command, response=response)
         if command is CommandName.CONNECT and response.ok:
             self._lifecycle_state = DeviceLifecycleState.CONNECTED
         logger.debug(
@@ -588,14 +587,17 @@ class BaseDevice:
         selected_options = options or ManualControlOptions()
         if not isinstance(selected_options, ManualControlOptions):
             raise TypeError("options must be a ManualControlOptions instance.")
+        release_telemetry = self._acquire_capability_telemetry(CapabilityName.MANUAL_CONTROL)
         report = self.readiness_for(CapabilityName.MANUAL_CONTROL)
         if not report.ready:
+            release_telemetry()
             messages = "; ".join(issue.message for issue in report.issues)
             raise RuntimeError(f"Device is not ready for manual control: {messages}")
         with self._manual_control_lock:
             if self._manual_control_session is not None:
+                release_telemetry()
                 raise RuntimeError("A manual control session is already active for this device.")
-            session = ManualControlSession(self, selected_options)
+            session = ManualControlSession(self, selected_options, release_telemetry=release_telemetry)
             self._manual_control_session = session
             return session
 
@@ -644,6 +646,10 @@ class BaseDevice:
             ignored_requirements=ignored_requirements,
         )
 
+    def _acquire_capability_telemetry(self, capability: CapabilityName) -> Callable[[], None]:
+        acquire = getattr(self.adapter, "acquire_capability_telemetry", None)
+        return acquire(capability) if callable(acquire) else lambda: None
+
     def diagnostics(self):
         """返回不含敏感连接参数的强类型设备诊断快照；用于健康检查、日志和运维界面。"""
         from fleetdock.readiness import DeviceDiagnostic
@@ -652,6 +658,9 @@ class BaseDevice:
         telemetry_age_s = None
         if state.last_event_updated_at_s is not None:
             telemetry_age_s = max(0.0, time.monotonic() - state.last_event_updated_at_s)
+        event_status = self.events.status()
+        telemetry_diagnostics = getattr(self.adapter, "telemetry_diagnostics", None)
+        telemetry = dict(telemetry_diagnostics()) if callable(telemetry_diagnostics) else {}
         return DeviceDiagnostic(
             device_id=self.metadata.device_id or self.instance_id,
             product=self.product_key,
@@ -663,6 +672,13 @@ class BaseDevice:
             in_air=state.in_air,
             flight_mode=state.flight_mode,
             failsafe=state.failsafe,
+            event_pending_events=event_status.pending_events,
+            event_dropped_events=event_status.dropped_events,
+            event_queue_capacity=event_status.queue_capacity,
+            event_queue_high_watermark=event_status.queue_high_watermark,
+            telemetry_requested_streams=tuple(telemetry.get("requested_streams", ())),
+            telemetry_callback_pending=int(telemetry.get("callback_pending", 0)),
+            telemetry_dropped_notifications=int(telemetry.get("dropped_notifications", 0)),
         )
 
     def _update_state_from_event(self, event: DeviceEvent) -> None:
@@ -682,6 +698,7 @@ class BaseDevice:
                 longitude_deg=event.position.longitude_deg,
                 absolute_altitude_m=event.position.absolute_altitude_m,
                 relative_altitude_m=event.position.relative_altitude_m,
+                global_position_updated_at_s=updated_at_s,
             )
         elif isinstance(event, LocalPositionUpdatedEvent):
             changes.update(

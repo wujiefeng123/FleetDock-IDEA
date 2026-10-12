@@ -8,7 +8,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable, Deque, List, Mapping, Optional, Self, Sequence
 
-from fleetdock.models import CapabilityName, StandardResponse
+from fleetdock.models import CapabilityName, CommandName, ErrorCode, StandardCommand, StandardResponse
 from fleetdock.avoidance import AvoidanceBlockedError
 from fleetdock.movement import MoveTarget
 from fleetdock.readiness import ReadinessRequirement
@@ -18,6 +18,8 @@ from fleetdock.tasking.models import (
     TaskStepHookPhase, TaskStepResult, UnlockStrategy,
 )
 from fleetdock.tasking.route_execution import RouteExecutionMixin
+from fleetdock.takeoff import TakeoffAdapter, TakeoffOptions
+from fleetdock.event_models import serialize_event_data
 
 if TYPE_CHECKING:
     pass
@@ -600,6 +602,45 @@ class DevicePlan(RouteExecutionMixin):
             return self._wait_until_ready(step, ctx, guard_interval_s)
         if step.name == "route":
             return self._route(step, ctx, guard_interval_s)
+        if step.name == "takeoff":
+            adapter = getattr(self._device, "adapter", None)
+            if isinstance(adapter, TakeoffAdapter) and adapter.supports_confirmed_takeoff():
+                options = TakeoffOptions(
+                    target_altitude_m=float(step.params["altitude"]),
+                    altitude_tolerance_m=ctx.options.altitude_tolerance_m,
+                    timeout_s=step_timeout_s,
+                    climb_speed_m_s=ctx.options.climb_speed_m_s,
+                )
+
+                def cancellation_check() -> None:
+                    self._raise_if_guard_triggered(ctx)
+
+                command = StandardCommand(
+                    command=CommandName.TAKEOFF,
+                    device_id=self._device.instance_id,
+                    product=self._device.product,
+                    params={"altitude": options.target_altitude_m},
+                )
+                try:
+                    status = adapter.execute_takeoff(
+                        options,
+                        cancellation_check=cancellation_check,
+                    )
+                except (TaskCancelledError, _GuardTriggered):
+                    raise
+                except Exception as exc:
+                    prefix = str(exc).split(":", 1)[0]
+                    code = ErrorCode.__members__.get(prefix, ErrorCode.UNKNOWN_ERROR)
+                    return StandardResponse.failure(command, code, str(exc) or type(exc).__name__)
+                return StandardResponse.success(
+                    command,
+                    "Takeoff target physically confirmed.",
+                    {"takeoff": serialize_event_data(status)},
+                )
+            if ctx.state.armed is not True and hasattr(self._device, "unlock"):
+                unlock_response = self._device.unlock()
+                if not unlock_response.ok:
+                    return unlock_response
 
         if step.name == "unlock" and "strategy" in step.params:
             response = self._execute_unlock(step)
@@ -693,7 +734,7 @@ class DevicePlan(RouteExecutionMixin):
             takeoff_grace_s = min(10.0, max(guard_interval_s, timeout_s * 0.1))
             self._climb_until_altitude(target, ctx, timeout_s, guard_interval_s, takeoff_grace_s=takeoff_grace_s)
         elif step.name == "land" and ctx.options.require_confirmation:
-            self._wait_until(lambda: ctx.state.in_air is False, ctx, timeout_s, guard_interval_s)
+            self._wait_until(lambda: self._land_is_confirmed(ctx.state), ctx, timeout_s, guard_interval_s)
         elif step.name == "lock" and ctx.options.require_confirmation:
             self._wait_until(lambda: ctx.state.armed is False, ctx, timeout_s, guard_interval_s)
         elif step.name == "unlock" and ctx.options.require_confirmation:
@@ -706,19 +747,41 @@ class DevicePlan(RouteExecutionMixin):
                 guard_interval_s,
             )
 
+    @staticmethod
+    def _land_is_confirmed(state: Any) -> bool:
+        if state is None:
+            return False
+        if state.in_air is False or state.armed is False:
+            return True
+        landed_state = str(state.landed_state or "").strip().lower()
+        return landed_state in {"on_ground", "landed", "landed_state_on_ground"}
+
     def _wait_until_ready(self, step: _TaskStep, ctx: TaskContext, guard_interval_s: float) -> StandardResponse:
+        capability = step.params.get("capability", CapabilityName.TAKEOFF)
+        if not isinstance(capability, CapabilityName):
+            capability = CapabilityName(capability)
+        acquire = getattr(self._device, "_acquire_capability_telemetry", None)
+        release = acquire(capability) if callable(acquire) else lambda: None
+        try:
+            return self._wait_until_ready_impl(step, ctx, guard_interval_s)
+        finally:
+            release()
+
+    def _wait_until_ready_impl(self, step: _TaskStep, ctx: TaskContext, guard_interval_s: float) -> StandardResponse:
         timeout_s = float(step.params["timeout_s"])
         require_global_position = bool(step.params["require_global_position"])
-        require_armable = bool(step.params.get("require_armable", True))
+        require_armable = bool(step.params.get("require_armable", False))
         capability = step.params.get("capability", CapabilityName.TAKEOFF)
         if not isinstance(capability, CapabilityName):
             capability = CapabilityName(capability)
         progress_callback = step.params.get("progress_callback")
-        extra_requirements = (
-            (ReadinessRequirement.GLOBAL_POSITION,) if require_global_position else ()
-        )
-        ignored_requirements = (
-            () if require_armable else (ReadinessRequirement.ARMABLE,)
+        extra_requirements = tuple(
+            requirement
+            for requirement, enabled in (
+                (ReadinessRequirement.GLOBAL_POSITION, require_global_position),
+                (ReadinessRequirement.ARMABLE, require_armable),
+            )
+            if enabled
         )
         deadline_s = time.monotonic() + timeout_s
         last_report = None
@@ -727,7 +790,6 @@ class DevicePlan(RouteExecutionMixin):
             last_report = self._device.readiness_for(
                 capability,
                 extra_requirements=extra_requirements,
-                ignored_requirements=ignored_requirements,
             )
             if callable(progress_callback):
                 progress_callback(last_report)

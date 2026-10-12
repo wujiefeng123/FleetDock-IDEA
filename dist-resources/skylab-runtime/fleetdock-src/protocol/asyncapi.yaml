@@ -1,0 +1,28 @@
+asyncapi: 3.0.0
+info:
+  title: FleetDock WebSocket Protocol
+  version: 1.0.0
+  description: FleetDock 控制、状态与标准传感器 WebSocket 协议。
+servers:
+  local:
+    host: 127.0.0.1:8765
+    protocol: ws
+channels:
+  control:
+    address: /ws/control
+    messages:
+      manualPress:
+        $ref: '#/components/messages/ManualPress'
+  telemetry:
+    address: /ws/telemetry
+    messages:
+      sensorSample:
+        $ref: '#/components/messages/SensorSample'
+components:
+  messages:
+    ManualPress:
+      payload:
+        $ref: './schemas/control.schema.json'
+    SensorSample:
+      payload:
+        $ref: './schemas/telemetry.schema.json'

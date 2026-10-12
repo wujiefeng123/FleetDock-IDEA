@@ -2,6 +2,7 @@ import time
 import unittest
 
 from fleetdock import (
+    CapabilityName,
     Drone,
     DronePlan,
     HeadingMode,
@@ -353,6 +354,29 @@ class DevicePlanTest(unittest.TestCase):
         self.assertIn(("return_to_launch",), client.calls)
         drone.close()
 
+    def test_ensure_land_records_cleanup_result_without_home(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "serial://COM3:57600"},
+        )
+        drone.state._update(armed=False, in_air=False)
+
+        result = (
+            Plan(drone)
+            .when(lambda _ctx: True, reason="abort before route")
+            .ensure_land(timeout_s=1.0)
+            .run(step_timeout_s=0.1, guard_interval_s=0.001)
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIsNotNone(result.cleanup_result)
+        assert result.cleanup_result is not None
+        self.assertTrue(result.cleanup_result.ok)
+        self.assertIn(("land",), client.calls)
+        drone.close()
+
     def test_unlock_waits_for_delayed_armed_telemetry(self) -> None:
         client = FakeTaskDroneClient()
         drone = self.make_drone(
@@ -405,6 +429,7 @@ class DevicePlanTest(unittest.TestCase):
             ctx.device.state._update(relative_altitude_m=0.0)
             ctx.device.state._update(local_x_m=0.0)
             ctx.device.state._update(local_y_m=0.0)
+            ctx.device.state._update(local_z_m=0.0)
             ctx.device.state._update(home_absolute_altitude_m=100.0)
             ctx.device.state._update(health_local_position_ok=True)
             ctx.device.state._update(health_home_position_ok=True)
@@ -425,6 +450,70 @@ class DevicePlanTest(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual([step.name for step in result.steps], ["wait_until_ready", "unlock"])
         self.assertEqual(client.calls, [("connect",), ("get_status",), ("arm",)])
+        drone.close()
+
+    def test_px4_takeoff_readiness_accepts_indoor_local_position_without_home(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "serial://COM3:57600"},
+        )
+        drone.state._update(
+            health_local_position_ok=True,
+            local_x_m=0.0,
+            local_y_m=0.0,
+            local_z_m=0.0,
+            last_event_updated_at_s=time.monotonic(),
+        )
+
+        report = drone.readiness_for(CapabilityName.TAKEOFF)
+
+        self.assertTrue(report.ready, report.issues)
+        drone.close()
+
+    def test_px4_takeoff_readiness_accepts_outdoor_global_position_without_local(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "udpin://0.0.0.0:14550"},
+        )
+        drone.state._update(
+            health_global_position_ok=True,
+            health_home_position_ok=True,
+            latitude_deg=31.2,
+            longitude_deg=121.5,
+            relative_altitude_m=0.0,
+            home_absolute_altitude_m=100.0,
+            last_event_updated_at_s=time.monotonic(),
+        )
+
+        report = drone.readiness_for(CapabilityName.TAKEOFF)
+
+        self.assertTrue(report.ready, report.issues)
+        drone.close()
+
+    def test_px4_route_readiness_selects_global_or_local_chain_by_capability(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "udpin://0.0.0.0:14550"},
+        )
+        drone.state._update(
+            health_global_position_ok=True,
+            health_home_position_ok=True,
+            latitude_deg=31.2,
+            longitude_deg=121.5,
+            relative_altitude_m=5.0,
+            home_absolute_altitude_m=100.0,
+            last_event_updated_at_s=time.monotonic(),
+        )
+
+        self.assertTrue(drone.readiness_for(CapabilityName.ROUTE).ready)
+        self.assertTrue(drone.readiness_for(CapabilityName.MISSION).ready)
+        self.assertFalse(drone.readiness_for(CapabilityName.OFFBOARD).ready)
         drone.close()
 
     def test_takeoff_task_uses_altitude_tolerance_for_completion(self) -> None:
@@ -563,6 +652,58 @@ class DevicePlanTest(unittest.TestCase):
         self.assertFalse(drone.state.snapshot().in_air)
         drone.close()
 
+    def test_land_confirmation_accepts_on_ground_when_in_air_is_stale(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "udpin://0.0.0.0:14550"},
+        )
+        drone.state._update(in_air=True, armed=True, landed_state="in_air")
+
+        def mark_on_ground_after_land(ctx) -> bool:
+            if ("land",) in client.calls:
+                ctx.device.state._update(landed_state="on_ground")
+            return False
+
+        result = (
+            Plan(drone)
+            .when(mark_on_ground_after_land, then=lambda ctx: None, reason="unused")
+            .land()
+            .run(step_timeout_s=1.0, guard_interval_s=0.001)
+        )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(drone.state.snapshot().in_air)
+        self.assertEqual(drone.state.snapshot().landed_state, "on_ground")
+        drone.close()
+
+    def test_land_confirmation_accepts_disarmed_when_in_air_is_stale(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "udpin://0.0.0.0:14550"},
+        )
+        drone.state._update(in_air=True, armed=True, landed_state="in_air")
+
+        def mark_disarmed_after_land(ctx) -> bool:
+            if ("land",) in client.calls:
+                ctx.device.state._update(armed=False)
+            return False
+
+        result = (
+            Plan(drone)
+            .when(mark_disarmed_after_land, then=lambda ctx: None, reason="unused")
+            .land()
+            .run(step_timeout_s=1.0, guard_interval_s=0.001)
+        )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(drone.state.snapshot().in_air)
+        self.assertFalse(drone.state.snapshot().armed)
+        drone.close()
+
     def test_task_options_provide_defaults_for_route_steps(self) -> None:
         client = FakeTaskDroneClient()
         drone = self.make_drone(
@@ -643,6 +784,45 @@ class DevicePlanTest(unittest.TestCase):
                 (MotionExecutionMode.AUTO, 1.0),
             ],
         )
+
+    def test_route_step_holds_route_telemetry_for_native_or_sdk_execution(self) -> None:
+        client = FakeTaskDroneClient()
+        drone = self.make_drone(
+            ProductType.PX4_GENERIC,
+            client,
+            params={"endpoint": "udpin://0.0.0.0:14550"},
+        )
+        active_leases = 0
+        acquired = []
+
+        def acquire(capability: CapabilityName):
+            nonlocal active_leases
+            acquired.append(capability)
+            active_leases += 1
+
+            def release() -> None:
+                nonlocal active_leases
+                active_leases -= 1
+
+            return release
+
+        drone._acquire_capability_telemetry = acquire  # type: ignore[method-assign]
+        route = Route.polyline((Waypoint(x_m=0.0, y_m=0.0), Waypoint(x_m=1.0, y_m=0.0)))
+        test_case = self
+
+        class RecordingDronePlan(DronePlan):
+            def _execute_route(self, route, ctx, guard_interval_s, **kwargs):
+                test_case.assertEqual(active_leases, 1)
+                return StandardResponse(True, "route", "test-drone", "mock.drone")
+
+        try:
+            result = RecordingDronePlan(drone).route(route).run()
+        finally:
+            drone.close()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(acquired, [CapabilityName.ROUTE])
+        self.assertEqual(active_leases, 0)
 
     def test_heading_tangent_sets_route_yaw(self) -> None:
         client = FakeTaskDroneClient()

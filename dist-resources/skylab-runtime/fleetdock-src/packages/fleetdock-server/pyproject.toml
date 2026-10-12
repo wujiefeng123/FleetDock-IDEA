@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fleetdock-server"
+version = "0.4.0"
+description = "FleetDock 设备控制、状态和传感器能力的 WebSocket 服务端与 Python 客户端。"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "FleetDock" }
+]
+license = "MIT"
+dependencies = [
+  "fleetdock==0.4.0",
+  "websockets>=14,<17",
+]
+
+[project.optional-dependencies]
+drone = [
+  "fleetdock[px4]==0.4.0",
+]
+vision = [
+  "fleetdock[vision]==0.4.0",
+]
+projectairsim = [
+  "fleetdock[projectairsim-rtsp]==0.4.0",
+]
+full-prod = [
+  "fleetdock[full-prod]==0.4.0",
+]
+dev = [
+  "build>=1.5.0",
+  "coverage>=7.15.0",
+  "mypy>=2.2.0",
+  "ruff>=0.15.21",
+]
+
+[project.scripts]
+fleetdock-server = "fleetdock_server.cli:main"
+fleetdock-server-drone = "fleetdock_server.commands.drone:main"
+fleetdock-controller = "fleetdock_server.debug:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["fleetdock_server*"]
+
+[tool.setuptools.package-data]
+fleetdock_server = ["py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["fleetdock_server"]
+follow_imports = "normal"
+ignore_missing_imports = true
+check_untyped_defs = true

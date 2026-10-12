@@ -29,7 +29,14 @@ class DronePlan(DevicePlan):
         return self._add("lock")
 
     def takeoff(self, altitude: float = 5.0) -> "DronePlan":
-        """把起飞动作加入队列；``altitude`` 是相对 Home 高度（米），返回当前计划链。"""
+        """把自动适配的起飞动作加入队列并返回当前计划链。
+
+        ``altitude`` 是相对起飞地面的目标高度（米）。执行时 SDK 自动完成预检、标准解锁、
+        控制链路选择和物理高度确认；开发者无需判断 PX4、MAVSDK 或其他厂商实现，也无需先调用
+        ``unlock()``。已有显式 ``unlock().takeoff()`` 调用仍保持兼容。
+        """
+        if altitude <= 0:
+            raise ValueError("takeoff altitude must be greater than 0.")
         return self._add("takeoff", altitude=altitude)
 
     def wait_until_ready(
@@ -37,14 +44,15 @@ class DronePlan(DevicePlan):
         timeout_s: float = 60.0,
         *,
         require_global_position: bool = False,
-        require_armable: bool = True,
+        require_armable: bool = False,
         capability: CapabilityName = CapabilityName.TAKEOFF,
         progress_callback: Optional[Callable[[Any], None]] = None,
     ) -> "DronePlan":
         """把起飞前就绪等待加入队列并返回当前计划链。
 
-        ``timeout_s`` 是最长等待秒数；``require_global_position`` 和 ``require_armable``
-        分别控制是否等待全球定位和可解锁状态；``capability`` 选择目标标准能力，默认检查起飞；
+        ``timeout_s`` 是最长等待秒数。默认起飞检查允许健康的本地定位或全球定位链路择一通过；
+        ``require_global_position=True`` 可为室外任务额外强制全球定位，``require_armable=True`` 可
+        额外等待飞控可解锁标志；``capability`` 选择目标标准能力，默认检查起飞；
         ``progress_callback`` 在每次检查后收到最新 ``ReadinessReport``。
         """
         return self._add(
@@ -59,6 +67,23 @@ class DronePlan(DevicePlan):
     def land(self) -> "DronePlan":
         """把降落动作加入计划队列并返回当前计划链。"""
         return self._add("land")
+
+    def ensure_land(self, *, timeout_s: float = 120.0) -> "DronePlan":
+        """把必执行降落加入计划并返回当前计划链。
+
+        正常路径会执行并确认降落；此前任一步骤失败、超时、取消或被安全策略阻断时，失败处理器会
+        启动独立降落计划，并把结果写入 ``TaskResult.cleanup_result``。``timeout_s`` 是降落确认的
+        最长秒数且必须大于零。该入口不依赖 GPS 或 Home，适合作为仿真、室内和室外共用 Demo 的
+        安全收尾；需要返回起飞点时应显式使用 ``ensure_return_to_launch()``。
+        """
+        if timeout_s <= 0:
+            raise ValueError("ensure_land timeout must be greater than 0.")
+
+        def land_after_failure(_context: Any, _result: TaskResult) -> TaskResult:
+            return DronePlan(self._device).land().run(step_timeout_s=timeout_s)
+
+        self.on_failed(land_after_failure)
+        return self.land()
 
     def return_to_launch(self) -> "DronePlan":
         """把返航动作加入计划队列并返回当前计划链。"""

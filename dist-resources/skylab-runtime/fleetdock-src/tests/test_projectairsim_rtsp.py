@@ -115,12 +115,21 @@ class ProjectAirSimRtspBridgeTests(unittest.TestCase):
             self.assertTrue(status.running)
             self.assertEqual(status.frames_received, 1)
             self.assertEqual(status.frames_published, 1)
+            self.assertEqual((status.width_px, status.height_px), (2, 1))
+            self.assertEqual(status.target_frame_rate_hz, 30.0)
+            self.assertEqual(status.target_bitrate_kbps, 4_000)
+            self.assertEqual(status.gop_frames, 30)
+            self.assertEqual(status.encoder_complexity, "medium")
+            self.assertTrue(status.frame_skip_enabled)
             self.assertIs(bridge.sensor_source, SensorSourceKind.SIMULATED)
             self.assertTrue(publishers[0].started)
             self.assertEqual(publishers[0].host, "127.0.0.1")
             self.assertEqual(publishers[0].port, 8554)
             self.assertEqual(publishers[0].path, "/Drone1_camera_front")
             self.assertEqual(publishers[0].settings["bitrate_kbps"], 4_000)
+            self.assertEqual(publishers[0].settings["gop_frames"], 30)
+            self.assertEqual(publishers[0].settings["encoder_complexity"], "medium")
+            self.assertTrue(publishers[0].settings["enable_frame_skip"])
             self.assertEqual(publishers[0].frames[0][:3], (2, 1, "BGR"))
         finally:
             bridge.close()
@@ -129,6 +138,31 @@ class ProjectAirSimRtspBridgeTests(unittest.TestCase):
         self.assertTrue(backend.unsubscribed)
         self.assertTrue(backend.closed)
         self.assertTrue(publishers[0].closed)
+
+    def test_full_frame_queue_replaces_old_frame_without_callback_failure(self) -> None:
+        first = _image_frame()
+        second = _image_frame()
+        backend = _FakeProjectAirSimBackend(first)
+        bridge = ProjectAirSimRtspBridge("Drone1", _sensor_backend=backend)
+        try:
+            bridge._receive_frame(first)
+            bridge._receive_frame(second)
+
+            self.assertIs(bridge._frames.get_nowait(), second)
+            self.assertEqual(bridge.status().dropped_frames, 1)
+        finally:
+            bridge.close()
+
+    def test_bridge_rejects_invalid_encoding_options(self) -> None:
+        backend = _FakeProjectAirSimBackend(_image_frame())
+        with self.assertRaisesRegex(ValueError, "gop_frames"):
+            ProjectAirSimRtspBridge("Drone1", gop_frames=0, _sensor_backend=backend)
+        with self.assertRaisesRegex(ValueError, "encoder_complexity"):
+            ProjectAirSimRtspBridge(
+                "Drone1",
+                encoder_complexity="ultra",
+                _sensor_backend=backend,
+            )
 
     def test_bridge_rejects_non_rgb_video_encoding_before_start_returns(self) -> None:
         frame = ImageFrame(

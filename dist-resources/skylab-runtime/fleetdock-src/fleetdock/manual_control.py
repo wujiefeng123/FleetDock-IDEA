@@ -8,7 +8,7 @@ import logging
 import math
 from threading import Event, RLock, Thread, current_thread
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from fleetdock.models import StandardResponse
 
@@ -106,7 +106,13 @@ class ManualControlSession:
     结束线程，并在曾发送非零目标时执行配置的保护动作。对象支持 ``with``，重复关闭安全。
     """
 
-    def __init__(self, device: "BaseDevice", options: ManualControlOptions) -> None:
+    def __init__(
+        self,
+        device: "BaseDevice",
+        options: ManualControlOptions,
+        *,
+        release_telemetry: Optional[Callable[[], None]] = None,
+    ) -> None:
         self._device = device
         self.options = options
         self._lock = RLock()
@@ -118,6 +124,7 @@ class ManualControlSession:
         self._failsafe_triggered = False
         self._motion_sent = False
         self._closed = False
+        self._release_telemetry = release_telemetry or (lambda: None)
         self._thread = Thread(
             target=self._run,
             name=f"fleetdock-manual-control-{device.instance_id}",
@@ -209,9 +216,12 @@ class ManualControlSession:
         self._wake.set()
         if self._thread.is_alive() and current_thread() is not self._thread:
             self._thread.join(timeout=max(2.0, self.options.refresh_interval_s * 4.0))
-        if should_protect and protect:
-            self._apply_failsafe()
-        self._device._release_manual_control(self)
+        try:
+            if should_protect and protect:
+                self._apply_failsafe()
+        finally:
+            self._release_telemetry()
+            self._device._release_manual_control(self)
         logger.debug("手动控制会话已关闭: device_id=%s", self._device.instance_id)
 
     def _run(self) -> None:

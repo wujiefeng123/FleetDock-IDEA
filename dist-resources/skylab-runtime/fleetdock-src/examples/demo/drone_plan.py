@@ -325,7 +325,10 @@ def main() -> None:
             .timeout(180.0)
             .heading(HeadingMode.TANGENT)
             .on_failed(handle_task_failed)
-            .wait_until_ready(timeout_s=60.0)
+            # 室内真机：等待光流、VIO、动捕等提供健康的本地位置。
+            # 室外真机：等待健康的全球位置、相对高度和 Home。
+            # 仿真：按实际收到的本地或全球定位遥测判断。
+            # .wait_until_ready(timeout_s=60.0)
             .unlock()
             .takeoff(altitude=TAKEOFF_ALTITUDE_M)
             .when(

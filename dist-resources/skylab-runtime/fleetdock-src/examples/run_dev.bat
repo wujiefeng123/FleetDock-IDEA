@@ -6,6 +6,8 @@ set "SCRIPT_DIR=%~dp0"
 set "WSL_SCRIPT_DIR=/mnt/e/git/github/FleetDock/examples"
 set "WSL_DISTRO=Ubuntu-24.04"
 set "AIRSIM_EXE=F:\runtime\ProjectAirSim\Neighborhood-Windows-UE5.2-PAS_v0.2.0\AirSimNH.exe"
+set "PROJECTAIRSIM_SCENE_CONFIG_PATH="
+rem 留空时使用 projectairsim\scenes\scene_px4_neighborhood.jsonc；填写绝对路径时使用指定场景。
 set "AIRSIM_STARTUP_WAIT_S=5"
 set "PROJECTAIRSIM_EXAMPLES_DIR=E:\git\github\ProjectAirSim\client\python\example_user_scripts"
 set "PROJECTAIRSIM_SRC_DIR=E:\git\github\ProjectAirSim\client\python\projectairsim\src"
@@ -39,9 +41,20 @@ if not exist "%CONDA_BAT%" (
 )
 echo Conda launcher: %CONDA_BAT%
 
-for /f "tokens=3" %%I in ('wsl -d %WSL_DISTRO% -- ip route show default') do set "DETECTED_PX4_WINDOWS_HOST_IP=%%I"
+set "DETECTED_PX4_WINDOWS_HOST_IP="
+for /l %%A in (1,1,10) do (
+    if not defined DETECTED_PX4_WINDOWS_HOST_IP (
+        for /f "tokens=3" %%I in ('wsl -d %WSL_DISTRO% -- ip route show default') do set "DETECTED_PX4_WINDOWS_HOST_IP=%%I"
+        if not defined DETECTED_PX4_WINDOWS_HOST_IP powershell -NoProfile -Command "Start-Sleep -Seconds 1"
+    )
+)
+if not defined DETECTED_PX4_WINDOWS_HOST_IP if defined PX4_WINDOWS_HOST_IP (
+    echo 未能从 WSL 检测 Windows 主机 IP，改用配置值 %PX4_WINDOWS_HOST_IP%。
+    set "DETECTED_PX4_WINDOWS_HOST_IP=%PX4_WINDOWS_HOST_IP%"
+)
 if not defined DETECTED_PX4_WINDOWS_HOST_IP (
-    echo Failed to detect the Windows host IP from WSL.
+    echo 连续 10 次未能从 WSL 检测 Windows 主机 IP。
+    echo 请在 examples\env.bat 中设置 PX4_WINDOWS_HOST_IP，或检查 WSL 网络。
     exit /b 1
 )
 if defined PX4_WINDOWS_HOST_IP if not "%PX4_WINDOWS_HOST_IP%"=="%DETECTED_PX4_WINDOWS_HOST_IP%" (
@@ -61,8 +74,11 @@ if not exist "%AIRSIM_EXE%" (
 )
 
 echo run airsim
-cmd /c taskkill /im AirSimNH.exe /f
-cmd /c taskkill /im AirSimNH-Win64-Shipping.exe /f
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%stop_simulator_processes.ps1"
+if not "%errorlevel%"=="0" (
+    echo failed to stop old simulator processes
+    exit /b 1
+)
 start "" "%AIRSIM_EXE%" %AIRSIM_ARGS%
 powershell -NoProfile -Command "Start-Sleep -Seconds %AIRSIM_STARTUP_WAIT_S%"
 

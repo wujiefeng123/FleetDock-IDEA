@@ -23,7 +23,7 @@ class ReadinessRequirement(str, Enum):
     LOCAL_POSITION = "local_position"  # 本地坐标位置可用，坐标系由 DeviceState 声明。
     GLOBAL_POSITION = "global_position"  # 全球经纬度位置可用。
     HOME_POSITION = "home_position"  # 空中设备 Home 点或等价安全参考点可用。
-    ARMABLE = "armable"  # 空中设备健康状态未禁止解锁。
+    ARMABLE = "armable"  # 空中设备健康遥测明确报告当前允许解锁。
     ARMED = "armed"  # 空中设备已经解锁，允许进入持续手动控制。
     IN_AIR = "in_air"  # 空中设备已经离地，允许发送空中机体系速度目标。
 
@@ -67,7 +67,9 @@ class DeviceDiagnostic:
 
     ``lifecycle_state`` 描述 SDK 资源状态，``connected`` 表示适配器控制链路状态，
     ``maturity`` 表示产品集成成熟度；``telemetry_age_s`` 是最近标准事件距当前的单调时钟秒数，
-    尚未收到事件时为 ``None``。该对象不包含连接密码、令牌或厂商原生对象。
+    尚未收到事件时为 ``None``。``event_*`` 字段暴露设备事件队列容量、当前积压、历史最高水位与
+    丢弃数；``telemetry_*`` 字段描述适配器当前按需流和回调背压。该对象不包含连接密码、令牌或
+    厂商原生对象。
     """
 
     device_id: str
@@ -80,6 +82,13 @@ class DeviceDiagnostic:
     in_air: Optional[bool]
     flight_mode: Optional[str]
     failsafe: Optional[bool]
+    event_pending_events: int = 0
+    event_dropped_events: int = 0
+    event_queue_capacity: int = 0
+    event_queue_high_watermark: int = 0
+    telemetry_requested_streams: tuple[str, ...] = ()
+    telemetry_callback_pending: int = 0
+    telemetry_dropped_notifications: int = 0
 
 
 def evaluate_readiness(
@@ -131,8 +140,18 @@ def _requirements_for_capability(capability: CapabilityName) -> set[ReadinessReq
     requirements = {ReadinessRequirement.CONNECTED}
     if capability is CapabilityName.TELEMETRY:
         requirements.add(ReadinessRequirement.TELEMETRY_AVAILABLE)
-    if capability in {CapabilityName.OFFBOARD, CapabilityName.MISSION, CapabilityName.ROUTE}:
+    if capability is CapabilityName.OFFBOARD:
         requirements.add(ReadinessRequirement.LOCAL_POSITION)
+    if capability is CapabilityName.MISSION:
+        requirements.update({
+            ReadinessRequirement.TELEMETRY_AVAILABLE,
+            ReadinessRequirement.GLOBAL_POSITION,
+            ReadinessRequirement.HOME_POSITION,
+        })
+    if capability is CapabilityName.ROUTE:
+        # 路线既可能由室外原生 Mission 执行，也可能由室内本地位置控制执行。
+        # 具体适配器负责判断至少一条链路可用。
+        requirements.add(ReadinessRequirement.TELEMETRY_AVAILABLE)
     if capability is CapabilityName.MANUAL_CONTROL:
         requirements.update({
             ReadinessRequirement.TELEMETRY_AVAILABLE,
@@ -141,12 +160,9 @@ def _requirements_for_capability(capability: CapabilityName) -> set[ReadinessReq
             ReadinessRequirement.IN_AIR,
         })
     if capability is CapabilityName.TAKEOFF:
-        requirements.update({
-            ReadinessRequirement.ALTITUDE,
-            ReadinessRequirement.LOCAL_POSITION,
-            ReadinessRequirement.HOME_POSITION,
-            ReadinessRequirement.ARMABLE,
-        })
+        # 起飞既可以使用室内本地定位链路，也可以使用室外全球定位链路。
+        # 两条链路的择一判断由适配器完成，通用层只要求已经收到遥测。
+        requirements.add(ReadinessRequirement.TELEMETRY_AVAILABLE)
     return requirements
 
 
@@ -179,7 +195,7 @@ def _missing_message(
             return None
         return "Home position or equivalent safety reference is unavailable."
     if requirement is ReadinessRequirement.ARMABLE:
-        return None if state.health_armable is not False else "Device health reports that arming is not allowed."
+        return None if state.health_armable is True else "Device health has not confirmed that arming is allowed."
     if requirement is ReadinessRequirement.ARMED:
         return None if state.armed is True else "Device is not armed."
     if requirement is ReadinessRequirement.IN_AIR:

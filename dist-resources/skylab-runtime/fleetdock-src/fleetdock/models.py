@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
 from typing import Any, Mapping, Optional, Union
 from uuid import uuid4
 
@@ -28,12 +29,42 @@ class ErrorCode(str, Enum):
     ADAPTER_NOT_FOUND = "ADAPTER_NOT_FOUND"
     # 连接设备或底层 SDK 失败。
     CONNECTION_FAILED = "CONNECTION_FAILED"
+    # 标准命令未在调用方声明的最长秒数内完成。
+    COMMAND_TIMEOUT = "COMMAND_TIMEOUT"
     # 设备尚未连接，无法执行当前操作。
     NOT_CONNECTED = "NOT_CONNECTED"
     # 当前设备状态不允许执行该操作。
     DEVICE_STATE_ERROR = "DEVICE_STATE_ERROR"
     # 参数校验失败。
     VALIDATION_ERROR = "VALIDATION_ERROR"
+    # 没有任何安全可用的自动起飞实现。
+    TAKEOFF_STRATEGY_UNAVAILABLE = "TAKEOFF_STRATEGY_UNAVAILABLE"
+    # 起飞前健康、定位、电量或姿态检查失败。
+    TAKEOFF_PRECHECK_FAILED = "TAKEOFF_PRECHECK_FAILED"
+    # 起飞与另一个活动控制器发生控制权冲突。
+    TAKEOFF_CONTROL_CONFLICT = "TAKEOFF_CONTROL_CONFLICT"
+    # 起飞依赖的遥测缺失或已过期。
+    TAKEOFF_TELEMETRY_STALE = "TAKEOFF_TELEMETRY_STALE"
+    # 飞控拒绝进入起飞所需的本地位置控制。
+    TAKEOFF_OFFBOARD_REJECTED = "TAKEOFF_OFFBOARD_REJECTED"
+    # 起飞解锁请求失败。
+    TAKEOFF_ARM_FAILED = "TAKEOFF_ARM_FAILED"
+    # 起飞命令被接受后没有检测到物理进展。
+    TAKEOFF_NO_PROGRESS = "TAKEOFF_NO_PROGRESS"
+    # 无人机未在期限内达到目标高度。
+    TAKEOFF_ASCENT_TIMEOUT = "TAKEOFF_ASCENT_TIMEOUT"
+    # 起飞期间位置或高度越过安全边界。
+    TAKEOFF_POSITION_LIMIT = "TAKEOFF_POSITION_LIMIT"
+    # 起飞期间倾角越过安全边界。
+    TAKEOFF_TILT_LIMIT = "TAKEOFF_TILT_LIMIT"
+    # 起飞执行被任务取消或安全动作抢占。
+    TAKEOFF_CANCELLED = "TAKEOFF_CANCELLED"
+    # 当前定位链路无法提供安全的悬停策略。
+    HOLD_STRATEGY_UNAVAILABLE = "HOLD_STRATEGY_UNAVAILABLE"
+    # 降落请求未被底层控制系统接受。
+    LANDING_REJECTED = "LANDING_REJECTED"
+    # 降落后未能确认已着陆或上锁。
+    LANDING_UNCONFIRMED = "LANDING_UNCONFIRMED"
 
 
 class CommandName(str, Enum):
@@ -288,7 +319,9 @@ class DeviceMetadata:
     """调用方维护的设备扩展信息。
 
     该对象不参与产品、固件或适配器选择；`device_id`、`name`、`tags` 和 `extra`
-    主要用于业务资产编号、界面展示、分组过滤和可序列化扩展信息。`user_context`
+    主要用于业务资产编号、界面展示、分组过滤和可序列化扩展信息。``local_frame_id``
+    是可选的局部坐标原点身份；只有多台设备确实由同一 VIO、动捕或地图原点输出坐标时才应填写
+    相同值，Fleet 跟随不会仅凭同为 Local NED/ENU 就假定原点相同。`user_context`
     可挂载调用方自己的对象，不保证可序列化，也不应作为 FleetDock 标准能力的必需依赖。
     """
 
@@ -297,9 +330,15 @@ class DeviceMetadata:
     tags: tuple[str, ...] = ()
     extra: Mapping[str, Any] = field(default_factory=dict)
     user_context: Any = None
+    local_frame_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "extra", freeze_mapping(self.extra))
+        if self.local_frame_id is not None:
+            local_frame_id = str(self.local_frame_id).strip()
+            if not local_frame_id:
+                raise ValueError("local_frame_id must not be empty when provided.")
+            object.__setattr__(self, "local_frame_id", local_frame_id)
 
 
 @dataclass(frozen=True)
@@ -462,7 +501,8 @@ class StandardCommand:
     """FleetDock 内部标准命令对象。
 
     设备方法会把用户调用转换为该对象，再交给适配器执行。`device_id` 是 SDK 内部实例
-    标识，`params` 保存命令参数，`timeout_s` 单位为秒，`metadata` 用于追踪调用上下文。
+    标识，`params` 保存命令参数，`timeout_s` 是可选正数秒值并限制适配器同步等待时间，
+    `metadata` 用于追踪调用上下文。
     """
 
     command: CommandName
@@ -474,6 +514,10 @@ class StandardCommand:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if self.timeout_s is not None and (
+            not math.isfinite(float(self.timeout_s)) or float(self.timeout_s) <= 0.0
+        ):
+            raise ValueError("timeout_s must be a positive finite number when provided.")
         object.__setattr__(self, "params", freeze_mapping(self.params))
         object.__setattr__(self, "metadata", freeze_mapping(self.metadata))
 

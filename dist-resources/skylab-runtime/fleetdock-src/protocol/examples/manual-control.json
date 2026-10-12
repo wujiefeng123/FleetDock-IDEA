@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "type": "manual.press",
+  "request_id": "req-1",
+  "device_id": "drone-001",
+  "control_id": "control-1",
+  "sequence": 1,
+  "action": "forward"
+}

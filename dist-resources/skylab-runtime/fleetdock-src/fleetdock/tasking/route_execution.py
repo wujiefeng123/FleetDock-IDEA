@@ -13,7 +13,7 @@ from fleetdock.avoidance import _AvoidanceAction, AvoidanceBlockedError, Avoidan
 from fleetdock.adapters.base import NativeRouteCallbacks, NativeRouteRequest
 from fleetdock.events import CoordinateFrame, EventCategory, EventType, RouteCompletionReason, RouteProgress, WaypointProgress
 from fleetdock.events import Vector3
-from fleetdock.models import StandardResponse
+from fleetdock.models import CapabilityName, StandardResponse
 from fleetdock.movement import GpsPoint, gps_offset_m
 from fleetdock.tasking.models import HeadingMode, MotionExecutionMode, RouteContinuity, RouteMotion, TaskContext
 from fleetdock.tasking.motion import clamp, resolve_approach_speed, resolve_profile_speed
@@ -47,17 +47,22 @@ class RouteExecutionMixin:
 
     def _route(self, step: _TaskStep, ctx: TaskContext, guard_interval_s: float) -> StandardResponse:
         route_ctx = self._with_route_motion(ctx, step.params.get("motion"))
-        return self._execute_route(
-            step.params["route"],
-            route_ctx,
-            guard_interval_s,
-            altitude=step.params["altitude"],
-            speed=step.params["speed"],
-            heading=step.params["heading"],
-            avoidance=step.params.get("avoidance"),
-            max_duration_s=step.params.get("max_duration_s"),
-            timeout_s=step.params.get("timeout_s"),
-        )
+        acquire = getattr(self._device, "_acquire_capability_telemetry", None)
+        release = acquire(CapabilityName.ROUTE) if callable(acquire) else lambda: None
+        try:
+            return self._execute_route(
+                step.params["route"],
+                route_ctx,
+                guard_interval_s,
+                altitude=step.params["altitude"],
+                speed=step.params["speed"],
+                heading=step.params["heading"],
+                avoidance=step.params.get("avoidance"),
+                max_duration_s=step.params.get("max_duration_s"),
+                timeout_s=step.params.get("timeout_s"),
+            )
+        finally:
+            release()
 
     @staticmethod
     def _with_route_motion(ctx: TaskContext, motion: RouteMotion | None) -> TaskContext:
@@ -622,6 +627,7 @@ class RouteExecutionMixin:
                 speed_remaining_m,
                 dt_s,
                 ctx.options,
+                position_tolerance_m=final_acceptance_radius_m,
             )
             move_yaw_deg = self._resolve_path_yaw_deg(heading, sample.tangent_x, sample.tangent_y)
             last_response = self._move_with_optional_yaw(
@@ -937,6 +943,7 @@ class RouteExecutionMixin:
         last_response: Optional[StandardResponse] = None
         stable_since_s: Optional[float] = None
         stopped_for_settle = False
+        overshoot_correction_logged = False
         last_loop_at_s = time.monotonic()
         deadline = last_loop_at_s + float(timeout_s if timeout_s is not None else ctx.options.step_timeout_s)
         while time.monotonic() < deadline:
@@ -948,12 +955,12 @@ class RouteExecutionMixin:
             current_x, current_y = self._require_local_xy(ctx)
             from_start_x = current_x - start_x
             from_start_y = current_y - start_y
+            projected_progress_m = from_start_x * unit_segment_x + from_start_y * unit_segment_y
             progress_m = self._clamp(
-                from_start_x * unit_segment_x + from_start_y * unit_segment_y,
+                projected_progress_m,
                 0.0,
                 segment_length_m,
             )
-            remaining_m = segment_length_m - progress_m
             end_distance_m = math.hypot(target_x - current_x, target_y - current_y)
             z = self._resolve_altitude_velocity(ctx, target_altitude)
             at_target = end_distance_m <= position_tolerance_m and z == 0.0
@@ -975,6 +982,16 @@ class RouteExecutionMixin:
 
             stable_since_s = None
             stopped_for_settle = False
+            if projected_progress_m >= segment_length_m and not overshoot_correction_logged:
+                logger.debug(
+                    "SDK 分段航线越点后继续纠偏: device_id=%s target_x_m=%.3f target_y_m=%.3f distance_m=%.3f tolerance_m=%.3f",
+                    getattr(ctx.device, "instance_id", None),
+                    target_x,
+                    target_y,
+                    end_distance_m,
+                    position_tolerance_m,
+                )
+                overshoot_correction_logged = True
             lookahead_m = max(ctx.options.min_lookahead_m, current_speed_m_s * ctx.options.lookahead_time_s)
             follow_progress_m = min(segment_length_m, progress_m + lookahead_m)
             follow_x = start_x + unit_segment_x * follow_progress_m
@@ -991,9 +1008,10 @@ class RouteExecutionMixin:
             current_speed_m_s = self._resolve_profile_speed(
                 current_speed_m_s,
                 speed,
-                remaining_m,
+                end_distance_m,
                 dt_s,
                 ctx.options,
+                position_tolerance_m=position_tolerance_m,
             )
             move_yaw_deg = yaw_deg if yaw_deg is not None else self._resolve_path_yaw_deg(heading, unit_x, unit_y)
             last_response = self._move_with_optional_yaw(
@@ -1177,8 +1195,17 @@ class RouteExecutionMixin:
         remaining_m: float,
         dt_s: float,
         options: TaskOptions,
+        *,
+        position_tolerance_m: Optional[float] = None,
     ) -> float:
-        return resolve_profile_speed(current_speed_m_s, max_speed_m_s, remaining_m, dt_s, options)
+        return resolve_profile_speed(
+            current_speed_m_s,
+            max_speed_m_s,
+            remaining_m,
+            dt_s,
+            options,
+            position_tolerance_m=position_tolerance_m,
+        )
 
     @staticmethod
     def _clamp(value: float, lower: float, upper: float) -> float:

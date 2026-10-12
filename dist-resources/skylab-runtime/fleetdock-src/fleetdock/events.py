@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 import logging
-from queue import Queue
+from queue import Full, Queue
 from threading import RLock
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, Type, Union, cast
@@ -43,14 +43,16 @@ class _DeviceEventSubscription:
     on_error: Optional[Callable[[EventHandlerFailure], None]]
     error_policy: HandlerErrorPolicy
     consecutive_failures: int = 0
+    release_demand: Optional[Callable[[], None]] = None
 
 
 @dataclass(frozen=True)
 class DeviceEventStreamStatus:
     """单设备事件流状态快照。
 
-    ``pending_events`` 是尚未完成分发的事件数量；``handler_error_count`` 为流生命周期内累计
-    回调错误数；``last_handler_error`` 为最近一次强类型错误信息。
+    ``pending_events`` 是尚未完成分发的事件数量；``dropped_events`` 是有界队列为保护内存而
+    丢弃或合并的累计事件数；``queue_capacity`` 和 ``queue_high_watermark`` 分别表示容量与历史
+    最高积压。``handler_error_count`` 为流生命周期内累计回调错误数。
     """
 
     closed: bool
@@ -59,6 +61,9 @@ class DeviceEventStreamStatus:
     handler_error_count: int
     last_handler_error: Optional[EventHandlerFailure]
     worker: WorkerStatus
+    dropped_events: int
+    queue_capacity: int
+    queue_high_watermark: int
 
 
 class DeviceEventStream:
@@ -66,23 +71,41 @@ class DeviceEventStream:
 
     _STOP = object()
 
-    def __init__(self, source: EventSource) -> None:
+    def __init__(self, source: EventSource, *, queue_capacity: int = 256) -> None:
+        if queue_capacity <= 0:
+            raise ValueError("queue_capacity must be greater than zero.")
         self.source = source
         self._lock = RLock()
         self._handlers: List[_DeviceEventSubscription] = []
         self._sequence = 0
         self._closed = False
-        self._queue: Queue[object] = Queue()
+        self._queue: Queue[object] = Queue(maxsize=queue_capacity)
+        self._dropped_events = 0
+        self._queue_high_watermark = 0
+        self._demand_handler: Optional[Callable[[Any], Callable[[], None]]] = None
         self._handler_error_count = 0
         self._last_handler_error: Optional[EventHandlerFailure] = None
         self._drain_error: Optional[EventHandlerFailure] = None
         self._worker = ManagedWorker(
             f"fleetdock-events-{source.device_id}",
             self._dispatch,
-            request_stop=lambda: self._queue.put_nowait(self._STOP),
+            request_stop=self._request_stop,
             # 事件流仍要求 device.close() 确定性释放；daemon 仅避免调用方遗漏关闭时阻塞解释器退出。
             daemon=True,
         ).start()
+
+    def _request_stop(self) -> None:
+        while True:
+            try:
+                self._queue.put_nowait(self._STOP)
+                return
+            except Full:
+                try:
+                    self._queue.get_nowait()
+                    self._queue.task_done()
+                    self._dropped_events += 1
+                except Exception:
+                    return
 
     def subscribe(
         self,
@@ -107,23 +130,45 @@ class DeviceEventStream:
         event_handler = cast(DeviceEventHandler, possible_handler)
         if not callable(event_handler):
             raise TypeError("Device event handler must be callable.")
+        return self._subscribe_handler(event_handler, on_error=on_error, error_policy=error_policy)
+
+    def _subscribe_handler(
+        self,
+        event_handler: DeviceEventHandler,
+        *,
+        on_error: Optional[Callable[[EventHandlerFailure], None]],
+        error_policy: HandlerErrorPolicy,
+        demand_filter: Any = None,
+    ) -> Callable[[], None]:
+        release_demand = None
+        demand_handler = self._demand_handler
+        if demand_filter is not None and demand_handler is not None:
+            release_demand = demand_handler(demand_filter)
         subscription = _DeviceEventSubscription(
             handler=event_handler,
             on_error=on_error,
             error_policy=HandlerErrorPolicy(error_policy),
+            release_demand=release_demand,
         )
         with self._lock:
             if self._closed:
+                if release_demand is not None:
+                    release_demand()
                 raise RuntimeError("Device event stream is closed.")
             self._handlers.append(subscription)
         logger.debug("设备事件订阅完成: device_id=%s", self.source.device_id)
 
         def unsubscribe() -> None:
+            removed = False
             with self._lock:
                 try:
                     self._handlers.remove(subscription)
+                    removed = True
                 except ValueError:
                     pass
+            if removed and subscription.release_demand is not None:
+                subscription.release_demand()
+                subscription.release_demand = None
             logger.debug("设备事件订阅取消: device_id=%s", self.source.device_id)
 
         return unsubscribe
@@ -152,7 +197,12 @@ class DeviceEventStream:
             if isinstance(event, event_filter):
                 handler(event)
 
-        return self.subscribe(filtered_handler, on_error=on_error, error_policy=error_policy)
+        return self._subscribe_handler(
+            filtered_handler,
+            on_error=on_error,
+            error_policy=error_policy,
+            demand_filter=event_filter,
+        )
 
     def on_name(
         self,
@@ -177,7 +227,24 @@ class DeviceEventStream:
             if event.type.value == normalized_event_name:
                 handler(event)
 
-        return self.subscribe(filtered_handler, on_error=on_error, error_policy=error_policy)
+        return self._subscribe_handler(
+            filtered_handler,
+            on_error=on_error,
+            error_policy=error_policy,
+            demand_filter=event_name,
+        )
+
+    def set_demand_handler(self, handler: Optional[Callable[[Any], Callable[[], None]]]) -> None:
+        """设置强类型事件订阅对应的底层数据需求处理器。
+
+        ``handler`` 接收事件类、标准事件枚举或事件名，并返回幂等释放函数。设备适配器用它把
+        ``events.on(...)`` 透明映射为厂商遥测租约；传 ``None`` 取消后续映射。已经存在的订阅不会
+        被追溯修改，普通全事件 ``subscribe(handler)`` 也不会隐式开启全部高频数据。
+        """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Device event stream is closed.")
+            self._demand_handler = handler
 
     def publish(
         self,
@@ -225,7 +292,7 @@ class DeviceEventStream:
             correlation_id=correlation_id,
             occurred_at=occurred_at or datetime.now(timezone.utc),
         )
-        self._queue.put_nowait(event)
+        self._offer_event(event)
         logger.debug(
             "设备事件入队: device_id=%s sequence=%d type=%s",
             self.source.device_id,
@@ -233,6 +300,58 @@ class DeviceEventStream:
             normalized_type,
         )
         return event
+
+    def _offer_event(self, event: DeviceEvent) -> None:
+        try:
+            self._queue.put_nowait(event)
+        except Full:
+            replaced = False
+            # Queue 没有公开的按类型替换接口；在其互斥锁内只替换可丢弃遥测，可靠事件不被遥测挤出。
+            with self._queue.mutex:
+                queued = self._queue.queue
+                candidate_index = next(
+                    (
+                        index
+                        for index, item in enumerate(queued)
+                        if isinstance(item, DeviceEvent)
+                        and item.category is EventCategory.TELEMETRY
+                        and item.type == event.type
+                    ),
+                    None,
+                )
+                if candidate_index is None and event.category is not EventCategory.TELEMETRY:
+                    candidate_index = next(
+                        (
+                            index
+                            for index, item in enumerate(queued)
+                            if isinstance(item, DeviceEvent) and item.category is EventCategory.TELEMETRY
+                        ),
+                        None,
+                    )
+                if candidate_index is not None:
+                    del queued[candidate_index]
+                    queued.append(event)
+                    self._dropped_events += 1
+                    replaced = True
+                    self._queue.not_empty.notify()
+                else:
+                    self._dropped_events += 1
+            if not replaced:
+                logger.debug(
+                    "设备事件队列已满，丢弃新事件: device_id=%s type=%s capacity=%d",
+                    self.source.device_id,
+                    event.type.value,
+                    self._queue.maxsize,
+                )
+                return
+            logger.debug(
+                "设备事件队列已满，合并旧遥测: device_id=%s type=%s capacity=%d",
+                self.source.device_id,
+                event.type.value,
+                self._queue.maxsize,
+            )
+        with self._lock:
+            self._queue_high_watermark = max(self._queue_high_watermark, self._queue.qsize())
 
     def publish_vendor(
         self,
@@ -306,6 +425,9 @@ class DeviceEventStream:
                 handler_error_count=self._handler_error_count,
                 last_handler_error=self._last_handler_error,
                 worker=self._worker.status(),
+                dropped_events=self._dropped_events,
+                queue_capacity=self._queue.maxsize,
+                queue_high_watermark=self._queue_high_watermark,
             )
 
     def close(self) -> None:
@@ -314,6 +436,13 @@ class DeviceEventStream:
             if self._closed:
                 return
             self._closed = True
+            subscriptions = tuple(self._handlers)
+            self._handlers.clear()
+            self._demand_handler = None
+        for subscription in subscriptions:
+            if subscription.release_demand is not None:
+                subscription.release_demand()
+                subscription.release_demand = None
         if not self._worker.stop(timeout_s=2.0):
             logger.debug("设备事件流后台线程未在期限内退出: device_id=%s", self.source.device_id)
         logger.debug("设备事件流已关闭: device_id=%s", self.source.device_id)
@@ -369,6 +498,9 @@ class DeviceEventStream:
                     self._handlers.remove(subscription)
                 except ValueError:
                     pass
+                if subscription.release_demand is not None:
+                    subscription.release_demand()
+                    subscription.release_demand = None
         if subscription.on_error is not None:
             try:
                 subscription.on_error(failure)

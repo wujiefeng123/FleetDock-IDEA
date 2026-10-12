@@ -1,4 +1,4 @@
-"""基于公共 SDK 的单设备图形调试控制器。"""
+"""Python WebSocket 控制器使用的 OpenCV 输入与显示实现。"""
 
 from __future__ import annotations
 
@@ -10,23 +10,24 @@ from queue import Empty, Queue
 import sys
 from threading import Event, RLock, Thread
 import time
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional
 
-from fleetdock._debug_ui import (
+from fleetdock.debug._ui import (
     _DebugTextRenderer,
     _restore_dpi_context_on_windows,
     _set_unicode_window_title_on_windows,
     _use_physical_pixels_on_windows,
 )
-from fleetdock.manual_control import ManualControlOptions, ManualControlSession
-from fleetdock.models import CapabilityName, StandardResponse
-from fleetdock.sensors import ImageFrame, SensorKind, SensorSample, StereoFrame
+from fleetdock.sensors import ImageFrame, StereoFrame
 
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_HORIZONTAL_SPEED_M_S = 3.0
 _MAX_HORIZONTAL_SPEED_M_S = 20.0
+_DEFAULT_VERTICAL_SPEED_M_S = 0.6
+_MIN_VERTICAL_SPEED_M_S = 0.1
+_MAX_VERTICAL_SPEED_M_S = 2.0
 _MOTION_INPUT_REFRESH_INTERVAL_S = 0.2
 _DISPLAY_FRAME_INTERVAL_S = 1.0 / 30.0
 _VK_ESCAPE = 0x1B
@@ -47,8 +48,8 @@ class _Action(str, Enum):
     EMERGENCY_STOP = "emergency_stop"
     SPEED_UP = "speed_up"
     SPEED_DOWN = "speed_down"
-    ALTITUDE_UP = "altitude_up"
-    ALTITUDE_DOWN = "altitude_down"
+    VERTICAL_SPEED_UP = "vertical_speed_up"
+    VERTICAL_SPEED_DOWN = "vertical_speed_down"
     FORWARD = "forward"
     BACK = "back"
     LEFT = "left"
@@ -73,8 +74,8 @@ _ACTION_LABELS = {
     _Action.EMERGENCY_STOP: "紧急停止",
     _Action.SPEED_UP: "速度增加",
     _Action.SPEED_DOWN: "速度降低",
-    _Action.ALTITUDE_UP: "高度增加",
-    _Action.ALTITUDE_DOWN: "高度降低",
+    _Action.VERTICAL_SPEED_UP: "升降速度增加",
+    _Action.VERTICAL_SPEED_DOWN: "升降速度降低",
     _Action.FORWARD: "前进",
     _Action.BACK: "后退",
     _Action.LEFT: "左移",
@@ -132,8 +133,8 @@ _KEYBOARD_COMMAND_BINDINGS = {
     ord("Z"): _Action.STOP,
     0xBD: _Action.SPEED_DOWN,
     0xBB: _Action.SPEED_UP,
-    0xDB: _Action.ALTITUDE_DOWN,
-    0xDD: _Action.ALTITUDE_UP,
+    0xDB: _Action.VERTICAL_SPEED_DOWN,
+    0xDD: _Action.VERTICAL_SPEED_UP,
 }
 _MONITORED_VIRTUAL_KEYS = frozenset(
     {_VK_LBUTTON, *_KEYBOARD_COMMAND_BINDINGS}
@@ -300,416 +301,10 @@ class _ControllerSnapshot:
     horizontal_speed_m_s: float
     vertical_speed_m_s: float
     yaw_rate_deg_s: float
-    takeoff_altitude_m: float
     manual_active: bool
     camera: Optional[ImageFrame | StereoFrame]
     messages: tuple[str, ...]
     enabled: frozenset[_Action]
-
-
-class _ControllerDisplay(Protocol):
-    def open(self, title: str) -> None: ...
-
-    def draw(self, snapshot: _ControllerSnapshot) -> None: ...
-
-    def poll(self, delay_ms: int) -> tuple[_ControlEvent, ...]: ...
-
-    def should_close(self) -> bool: ...
-
-    def close(self) -> None: ...
-
-
-ControllerDisplayFactory = Callable[[], _ControllerDisplay]
-
-
-class _DebugController:
-    """协调调试窗口、设备状态、传感器订阅和公共 SDK 命令。"""
-
-    def __init__(
-        self,
-        device: Any,
-        *,
-        title: str,
-        camera: bool,
-        camera_subscribe: Optional[
-            Callable[[Callable[[SensorSample], None]], Callable[[], None]]
-        ] = None,
-        display_factory: Optional[ControllerDisplayFactory] = None,
-    ) -> None:
-        self._device = device
-        self._title = title
-        self._camera_enabled = camera
-        self._camera_subscribe = camera_subscribe
-        self._display_factory = display_factory or _OpenCvControllerDisplay
-        self._stop = Event()
-        self._lock = RLock()
-        self._messages: list[str] = []
-        self._camera: Optional[ImageFrame | StereoFrame] = None
-        self._camera_fps: Optional[float] = None
-        self._last_camera_received_at_s: Optional[float] = None
-        self._camera_unsubscribe: Optional[Callable[[], None]] = None
-        self._manual: Optional[ManualControlSession] = None
-        self._motion_actions: frozenset[_Action] = frozenset()
-        self._pending_motion_actions: Optional[frozenset[_Action]] = None
-        self._next_motion_input_at_s = 0.0
-        self._horizontal_speed_m_s = _DEFAULT_HORIZONTAL_SPEED_M_S
-        self._vertical_speed_m_s = 0.6
-        self._yaw_rate_deg_s = 30.0
-        self._takeoff_altitude_m = 5.0
-        self._command_queue: Queue[Optional[_Action]] = Queue()
-        self._worker = Thread(
-            target=self._command_worker,
-            name=f"fleetdock-debug-controller-{device.instance_id}",
-            daemon=True,
-        )
-        self._emergency_confirmation_until_s = 0.0
-        self._force_unlock_confirmation_until_s = 0.0
-        self._last_observed_armed: Optional[bool] = None
-        self._last_successful_action: Optional[_Action] = None
-
-    def run(self) -> None:
-        """在当前线程运行控制器窗口，直到用户关闭窗口或设备调试入口请求停止。"""
-        display = self._display_factory()
-        display.open(self._title)
-        self._worker.start()
-        if self._camera_enabled:
-            self._start_camera_subscription()
-        try:
-            while not self._stop.is_set() and not display.should_close():
-                frame_started_at_s = time.monotonic()
-                display.draw(self._snapshot())
-                for event in display.poll(20):
-                    if isinstance(event, _MotionInput):
-                        with self._lock:
-                            self._pending_motion_actions = event.actions
-                    else:
-                        self._command_queue.put(event)
-                remaining_s = _DISPLAY_FRAME_INTERVAL_S - (
-                    time.monotonic() - frame_started_at_s
-                )
-                if remaining_s > 0.0:
-                    self._stop.wait(remaining_s)
-        finally:
-            self.close()
-            display.close()
-
-    def close(self) -> None:
-        """结束窗口循环、手动控制、摄像头订阅和命令线程；重复调用安全且无返回值。"""
-        self._stop.set()
-        self._command_queue.put(None)
-        if self._worker.is_alive():
-            self._worker.join(timeout=5.0)
-        manual = self._detach_manual()
-        if manual is not None:
-            manual.close()
-        unsubscribe = self._camera_unsubscribe
-        self._camera_unsubscribe = None
-        if unsubscribe is not None:
-            unsubscribe()
-        logger.debug("设备图形调试控制器已关闭: device_id=%s", self._device.instance_id)
-
-    def _handle_action(self, event: _ControlEvent) -> None:
-        if isinstance(event, _MotionInput):
-            self._set_motion(event.actions)
-            return
-        action = event
-        if action is _Action.SPEED_UP:
-            self._horizontal_speed_m_s = min(
-                _MAX_HORIZONTAL_SPEED_M_S,
-                self._horizontal_speed_m_s + 0.5,
-            )
-            return
-        if action is _Action.SPEED_DOWN:
-            self._horizontal_speed_m_s = max(0.5, self._horizontal_speed_m_s - 0.5)
-            return
-        if action is _Action.ALTITUDE_UP:
-            self._takeoff_altitude_m = min(30.0, self._takeoff_altitude_m + 1.0)
-            return
-        if action is _Action.ALTITUDE_DOWN:
-            self._takeoff_altitude_m = max(1.0, self._takeoff_altitude_m - 1.0)
-            return
-        if action in _MOTION_ACTIONS:
-            self._set_motion(frozenset({action}))
-            return
-        if action is _Action.RELEASE:
-            self._set_motion(frozenset())
-            return
-        if action is _Action.FORCE_UNLOCK:
-            now_s = time.monotonic()
-            if now_s > self._force_unlock_confirmation_until_s:
-                self._force_unlock_confirmation_until_s = now_s + 3.0
-                self._append_message("仅限台架诊断；飞行请修复预检。3 秒内再次点击确认")
-                return
-            self._force_unlock_confirmation_until_s = 0.0
-        if action is _Action.EMERGENCY_STOP:
-            now_s = time.monotonic()
-            if now_s > self._emergency_confirmation_until_s:
-                self._emergency_confirmation_until_s = now_s + 3.0
-                self._append_message("请在 3 秒内再次点击“紧急停止”进行确认")
-                return
-            self._emergency_confirmation_until_s = 0.0
-        response = self._execute_action(action)
-        self._append_response(action, response)
-
-    def _set_motion(self, actions: frozenset[_Action]) -> None:
-        if actions == self._motion_actions:
-            return
-        was_moving = bool(self._motion_actions)
-        self._motion_actions = actions
-        if not actions:
-            self._next_motion_input_at_s = 0.0
-            if self._manual is not None:
-                self._manual.release()
-            if was_moving:
-                self._append_message("运动：已停止")
-            return
-        labels = "+".join(_ACTION_LABELS[action] for action in sorted(actions, key=lambda item: item.value))
-        self._append_message(f"运动：{labels}（松开对应按键即撤销）")
-        logger.debug(
-            "调试控制器运动输入已更新: device_id=%s actions=%s refresh_hz=%.1f",
-            self._device.instance_id,
-            ",".join(sorted(action.value for action in actions)),
-            1.0 / _MOTION_INPUT_REFRESH_INTERVAL_S,
-        )
-        self._update_motion(actions)
-
-    def _update_motion(self, actions: frozenset[_Action]) -> None:
-        try:
-            manual = self._manual
-            if manual is None:
-                options = ManualControlOptions(
-                    max_horizontal_speed_m_s=_MAX_HORIZONTAL_SPEED_M_S,
-                    max_vertical_speed_m_s=2.0,
-                    max_yaw_rate_deg_s=60.0,
-                )
-                manual = self._device.manual_control(options)
-                self._manual = manual
-            forward_axis = int(_Action.FORWARD in actions) - int(_Action.BACK in actions)
-            right_axis = int(_Action.RIGHT in actions) - int(_Action.LEFT in actions)
-            horizontal_scale = 2**-0.5 if forward_axis and right_axis else 1.0
-            forward_m_s = forward_axis * self._horizontal_speed_m_s * horizontal_scale
-            right_m_s = right_axis * self._horizontal_speed_m_s * horizontal_scale
-            up_m_s = (
-                int(_Action.UP in actions) - int(_Action.DOWN in actions)
-            ) * self._vertical_speed_m_s
-            yaw_rate_deg_s = (
-                int(_Action.YAW_RIGHT in actions) - int(_Action.YAW_LEFT in actions)
-            ) * self._yaw_rate_deg_s
-            manual.update(
-                forward_m_s=forward_m_s,
-                right_m_s=right_m_s,
-                up_m_s=up_m_s,
-                yaw_rate_deg_s=yaw_rate_deg_s,
-            )
-            self._next_motion_input_at_s = time.monotonic() + _MOTION_INPUT_REFRESH_INTERVAL_S
-        except Exception as exc:
-            self._motion_actions = frozenset()
-            self._append_message(self._exception_message("手动控制不可用", exc))
-
-    def _command_worker(self) -> None:
-        while not self._stop.is_set():
-            with self._lock:
-                pending_motion = self._pending_motion_actions
-                self._pending_motion_actions = None
-            if pending_motion is not None:
-                try:
-                    self._set_motion(pending_motion)
-                except Exception as exc:
-                    self._append_message(self._exception_message("运动", exc))
-            if self._motion_actions and time.monotonic() >= self._next_motion_input_at_s:
-                self._update_motion(self._motion_actions)
-            try:
-                action = self._command_queue.get(timeout=0.02)
-            except Empty:
-                continue
-            if action is None:
-                return
-            try:
-                self._handle_action(action)
-            except Exception as exc:
-                self._append_message(self._exception_message(_ACTION_LABELS[action], exc))
-
-    def _execute_action(self, action: _Action) -> StandardResponse:
-        if action in {
-            _Action.LOCK,
-            _Action.HOVER,
-            _Action.LAND,
-            _Action.RTL,
-            _Action.STOP,
-            _Action.EMERGENCY_STOP,
-        }:
-            self._motion_actions = frozenset()
-            manual = self._detach_manual()
-            if manual is not None:
-                manual.close(protect=False)
-        commands = {
-            _Action.CONNECT: self._device.connect,
-            _Action.UNLOCK: self._device.unlock,
-            _Action.FORCE_UNLOCK: lambda: self._device.unlock(force=True),
-            _Action.LOCK: self._device.lock,
-            _Action.TAKEOFF: lambda: self._device.takeoff(self._takeoff_altitude_m),
-            _Action.HOVER: self._device.hover,
-            _Action.LAND: self._device.land,
-            _Action.RTL: self._device.return_to_launch,
-            _Action.STOP: self._device.stop,
-            _Action.EMERGENCY_STOP: self._device.emergency_stop,
-        }
-        return commands[action]()
-
-    def _detach_manual(self) -> Optional[ManualControlSession]:
-        manual = self._manual
-        self._manual = None
-        return manual
-
-    def _start_camera_subscription(self) -> None:
-        try:
-            if self._camera_subscribe is not None:
-                unsubscribe = self._camera_subscribe(self._on_camera)
-                if not callable(unsubscribe):
-                    raise TypeError("摄像头订阅入口必须返回取消订阅函数。")
-                self._camera_unsubscribe = unsubscribe
-                self._append_message("摄像头订阅已启动")
-                logger.debug(
-                    "调试控制器已接入调用方选择的标准摄像头订阅: device_id=%s",
-                    self._device.instance_id,
-                )
-                return
-            identifier = next(
-                kind
-                for kind in (SensorKind.RGB_CAMERA, SensorKind.DEPTH_CAMERA, SensorKind.STEREO_CAMERA)
-                if self._device.sensors.supports(kind)
-            )
-            self._camera_unsubscribe = self._device.sensors.subscribe(identifier, self._on_camera)
-            self._append_message("摄像头订阅已启动")
-            logger.debug(
-                "调试控制器已自动订阅标准摄像头: device_id=%s kind=%s",
-                self._device.instance_id,
-                identifier.value,
-            )
-        except StopIteration:
-            self._append_message("未发现标准摄像头，控制按钮仍可使用")
-        except Exception as exc:
-            self._append_message(self._exception_message("摄像头不可用", exc))
-
-    def _on_camera(self, sample: SensorSample) -> None:
-        if isinstance(sample, (ImageFrame, StereoFrame)):
-            now_s = time.monotonic()
-            with self._lock:
-                if self._last_camera_received_at_s is not None:
-                    interval_s = now_s - self._last_camera_received_at_s
-                    if 0.0 < interval_s <= 1.0:
-                        instant_fps = 1.0 / interval_s
-                        self._camera_fps = (
-                            instant_fps
-                            if self._camera_fps is None
-                            else self._camera_fps * 0.8 + instant_fps * 0.2
-                        )
-                self._last_camera_received_at_s = now_s
-                self._camera = sample
-
-    def _snapshot(self) -> _ControllerSnapshot:
-        state = self._device.state.snapshot()
-        diagnostic = self._device.diagnostics()
-        self._observe_armed_state(state.armed, state.in_air)
-        enabled: set[_Action] = set()
-        capability_actions = {
-            _Action.CONNECT: CapabilityName.CONNECT,
-            _Action.UNLOCK: CapabilityName.ARM,
-            _Action.FORCE_UNLOCK: CapabilityName.ARM,
-            _Action.LOCK: CapabilityName.LOCK,
-            _Action.TAKEOFF: CapabilityName.TAKEOFF,
-            _Action.HOVER: CapabilityName.HOVER,
-            _Action.LAND: CapabilityName.LAND,
-            _Action.RTL: CapabilityName.RETURN_TO_LAUNCH,
-            _Action.STOP: CapabilityName.STOP,
-            _Action.EMERGENCY_STOP: CapabilityName.EMERGENCY_STOP,
-        }
-        if not diagnostic.connected and self._device.has_capability(CapabilityName.CONNECT):
-            enabled.add(_Action.CONNECT)
-        if diagnostic.connected:
-            if state.armed is not True and self._device.has_capability(CapabilityName.ARM):
-                enabled.update({_Action.UNLOCK, _Action.FORCE_UNLOCK})
-        if state.armed is True and state.in_air is not True:
-            enabled.update(
-                action
-                for action in (_Action.LOCK, _Action.TAKEOFF, _Action.EMERGENCY_STOP)
-                if self._device.has_capability(capability_actions[action])
-            )
-        if state.in_air is True:
-            enabled.update(
-                action
-                for action in (_Action.HOVER, _Action.LAND, _Action.RTL, _Action.STOP, _Action.EMERGENCY_STOP)
-                if self._device.has_capability(capability_actions[action])
-            )
-            if self._device.has_capability(CapabilityName.MANUAL_CONTROL):
-                enabled.update(_MOTION_ACTIONS)
-                enabled.add(_Action.RELEASE)
-        enabled.update({_Action.SPEED_UP, _Action.SPEED_DOWN, _Action.ALTITUDE_UP, _Action.ALTITUDE_DOWN})
-        with self._lock:
-            messages = tuple(self._messages[-6:])
-            camera = self._camera
-            camera_fps = self._camera_fps
-        battery_percent = (
-            None
-            if state.battery_remaining_fraction is None
-            else state.battery_remaining_fraction * 100.0
-        )
-        return _ControllerSnapshot(
-            device_id=self._device.metadata.device_id or self._device.instance_id,
-            product=self._device.product_key,
-            connected=diagnostic.connected,
-            armed=state.armed,
-            in_air=state.in_air,
-            flight_mode=state.flight_mode,
-            failsafe=state.failsafe,
-            battery_percent=battery_percent,
-            relative_altitude_m=state.relative_altitude_m,
-            roll_deg=state.roll_deg,
-            pitch_deg=state.pitch_deg,
-            yaw_deg=state.yaw_deg,
-            telemetry_age_s=diagnostic.telemetry_age_s,
-            camera_fps=camera_fps,
-            horizontal_speed_m_s=self._horizontal_speed_m_s,
-            vertical_speed_m_s=self._vertical_speed_m_s,
-            yaw_rate_deg_s=self._yaw_rate_deg_s,
-            takeoff_altitude_m=self._takeoff_altitude_m,
-            manual_active=self._manual is not None,
-            camera=camera,
-            messages=messages,
-            enabled=frozenset(enabled),
-        )
-
-    def _append_response(self, action: _Action, response: StandardResponse) -> None:
-        if response.ok:
-            self._last_successful_action = action
-        marker = "成功" if response.ok else response.code.value
-        message = response.message
-        suffix = f" - {message}" if message else ""
-        self._append_message(f"{_ACTION_LABELS[action]}：{marker}{suffix}")
-        if action is _Action.FORCE_UNLOCK and response.ok:
-            self._append_message("台架强制解锁不等于可起飞，PX4 仍可能立即自动上锁")
-
-    def _observe_armed_state(self, armed: Optional[bool], in_air: Optional[bool]) -> None:
-        """识别飞控主动上锁，并把容易误判为控制器操作的状态变化解释给调试人员。"""
-        previous = self._last_observed_armed
-        self._last_observed_armed = armed
-        if previous is not True or armed is not False or in_air is True:
-            return
-        if self._last_successful_action is _Action.FORCE_UNLOCK:
-            self._append_message("飞控已自动上锁：台架强制解锁不能替代飞行预检")
-        elif self._last_successful_action is _Action.UNLOCK:
-            self._append_message("飞控已自动上锁：解锁后请在飞控允许时间内起飞")
-
-    @staticmethod
-    def _exception_message(prefix: str, exc: Exception) -> str:
-        """生成适合控制器操作日志展示的本地化错误摘要。"""
-        return f"{prefix}：{exc}"
-
-    def _append_message(self, message: str) -> None:
-        with self._lock:
-            self._messages.append(message)
-            if len(self._messages) > 50:
-                del self._messages[:-50]
 
 
 @dataclass(frozen=True)
@@ -740,7 +335,7 @@ class _OpenCvControllerDisplay:
             raise RuntimeError(
                 '图形调试控制器需要可选依赖，请使用 "fleetdock[vision]" 安装。'
             ) from exc
-        from fleetdock.debug import _OpenCvDebugDisplay
+        from fleetdock.debug.camera import _OpenCvDebugDisplay
 
         self._cv2 = cv2
         self._np = numpy
@@ -934,6 +529,7 @@ class _OpenCvControllerDisplay:
         else:
             self._put(canvas, "暂无相机画面，正在等待数据", x1 + 180, y1 + 175, (120, 130, 140))
         hud = (
+            f"{self._camera_resolution(snapshot.camera)}  "
             f"高度 {self._fmt(snapshot.relative_altitude_m, 'm')}  "
             f"电量 {self._fmt(snapshot.battery_percent, '%')}  "
             f"偏航 {self._fmt(snapshot.yaw_deg, '°')}  "
@@ -954,8 +550,8 @@ class _OpenCvControllerDisplay:
             f"飞行中：{self._bool_text(snapshot.in_air)}",
             f"模式：{snapshot.flight_mode or '未知'}  失效保护：{self._bool_text(snapshot.failsafe)}",
             f"遥测延迟：{self._fmt(snapshot.telemetry_age_s, 's')}",
-            f"起飞高度：{snapshot.takeoff_altitude_m:.1f} m",
             f"水平速度：{snapshot.horizontal_speed_m_s:.1f} m/s",
+            f"升降速度：{snapshot.vertical_speed_m_s:.1f} m/s",
             f"手动控制：{'已启用' if snapshot.manual_active else '待命'}  当前输入：{input_text}",
         )
         y = 40
@@ -1000,7 +596,7 @@ class _OpenCvControllerDisplay:
         )
         self._put(
             canvas,
-            "命令：C 连接  U 解锁  L 锁定  空格起飞  Ctrl 降落  H 悬停  T 返航  Z 停止  +/- 速度  [/] 高度  Esc/X 关闭",
+            "命令：C 连接  U 解锁  L 锁定  空格起飞(默认 5m)  Ctrl 降落  H 悬停  T 返航  Z 停止  +/- 水平速度  [/] 升降速度  Esc/X 关闭",
             20,
             682,
             (130, 140, 150),
@@ -1021,6 +617,13 @@ class _OpenCvControllerDisplay:
         return "未知" if value is None else f"{value:.1f}{suffix}"
 
     @staticmethod
+    def _camera_resolution(camera: Optional[ImageFrame | StereoFrame]) -> str:
+        if camera is None:
+            return "分辨率 未知"
+        frame = camera.left if isinstance(camera, StereoFrame) else camera
+        return f"{frame.width}×{frame.height}"
+
+    @staticmethod
     def _bool_text(value: Optional[bool]) -> str:
         if value is None:
             return "未知"
@@ -1039,10 +642,10 @@ class _OpenCvControllerDisplay:
             _Button(_Action.RTL, "返航", 680, 325, 785, 365),
             _Button(_Action.STOP, "停止", 795, 325, 900, 365),
             _Button(_Action.EMERGENCY_STOP, "紧急停止", 910, 325, 1035, 365, True),
-            _Button(_Action.ALTITUDE_DOWN, "高度 -", 680, 375, 785, 415),
-            _Button(_Action.ALTITUDE_UP, "高度 +", 795, 375, 900, 415),
-            _Button(_Action.SPEED_DOWN, "速度 -", 910, 375, 1015, 415),
-            _Button(_Action.SPEED_UP, "速度 +", 910, 425, 1015, 465),
+            _Button(_Action.VERTICAL_SPEED_DOWN, "升降速度 -", 680, 375, 785, 415),
+            _Button(_Action.VERTICAL_SPEED_UP, "升降速度 +", 795, 375, 900, 415),
+            _Button(_Action.SPEED_DOWN, "水平速度 -", 910, 375, 1030, 415),
+            _Button(_Action.SPEED_UP, "水平速度 +", 910, 425, 1030, 465),
             _Button(_Action.FORWARD, "前进", 780, 440, 900, 480),
             _Button(_Action.LEFT, "左移", 650, 490, 770, 530),
             _Button(_Action.RELEASE, "停止移动", 780, 490, 900, 530),

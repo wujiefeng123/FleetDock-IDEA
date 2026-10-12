@@ -312,11 +312,11 @@ def prepare_and_takeoff_fleet(fleet: Fleet, *, altitude_m: float = TAKEOFF_ALTIT
     )
     result = (
         configure_drone_plan(Plan(fleet, interceptors=[print_task_step]).for_drones())
-        .wait_until_ready(
-            timeout_s=60.0,
-            require_armable=False,
-            progress_callback=print_readiness,
-        )
+        # .wait_until_ready(
+        #     timeout_s=60.0,
+        #     require_armable=False,
+        #     progress_callback=print_readiness,
+        # )
         .unlock(strategy=UnlockStrategy.STANDARD_THEN_FORCE)
         .takeoff(altitude=altitude_m)
         .run(step_timeout_s=TAKEOFF_CONFIRM_TIMEOUT_S)

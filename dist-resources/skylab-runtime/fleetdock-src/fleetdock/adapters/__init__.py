@@ -11,6 +11,7 @@ from fleetdock.adapters.base import (
     RouteExecutionCallbacks,
     RouteExecutionRequest,
     TelemetryAdapter,
+    TakeoffAdapter,
 )
 from fleetdock.adapters.mock import MockDroneAdapter, MockRobotDogAdapter
 from fleetdock.adapters.mock_sensors import MockSensorBackend
@@ -32,4 +33,5 @@ __all__ = [
     "RouteExecutionRequest",
     "Px4MavlinkAdapter",
     "TelemetryAdapter",
+    "TakeoffAdapter",
 ]

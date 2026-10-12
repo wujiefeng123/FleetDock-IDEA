@@ -1,4 +1,4 @@
-"""让 PX4 无人机起飞后使用强类型本地目标移动并返航。"""
+"""让 PX4 无人机起飞后使用强类型本地目标移动并降落。"""
 
 import os
 
@@ -14,15 +14,14 @@ def main() -> None:
         result = (
             Plan(drone)
             .wait_until_ready(timeout_s=60.0)
-            .unlock()
             .takeoff(altitude=10.0)
             .move(RelativePoint3D(x_m=3.0, y_m=0.0, z_m=10.0))
-            .return_to_launch()
+            .ensure_land()
             .run()
         )
         print(result)
     finally:
-        print("清理返航：", drone.return_to_launch())
+        print("清理降落：", drone.land())
         drone.close()
 
 

@@ -5,6 +5,7 @@ import time
 from fleetdock import (
     BatteryState,
     CapabilityName,
+    CoordinateFrame,
     DeviceCategory,
     DeviceEvent,
     DeviceMetadata,
@@ -63,6 +64,9 @@ class FakeFleetDroneClient:
     def return_to_launch(self) -> None:
         self.calls.append(("return_to_launch",))
 
+    def land(self) -> None:
+        self.calls.append(("land",))
+
     def set_velocity(self, x: float, y: float, z: float, speed: float, yaw_deg=None) -> None:
         self.calls.append(("set_velocity", x, y, z, speed, yaw_deg))
 
@@ -113,7 +117,12 @@ class FleetTest(unittest.TestCase):
             ProductType.PX4_GENERIC,
             client,
             params={"endpoint": endpoint},
-            metadata=DeviceMetadata(device_id=device_id, name=name, tags=("inspection",)),
+            metadata=DeviceMetadata(
+                device_id=device_id,
+                name=name,
+                tags=("inspection",),
+                local_frame_id="fleet-test-map",
+            ),
         )
         return drone, client
 
@@ -436,6 +445,51 @@ class FleetTest(unittest.TestCase):
         self.assertIn(("takeoff", 12.0), client2.calls)
         fleet.close()
 
+    def test_drone_fleet_takeoff_readiness_accepts_indoor_members_without_home(self) -> None:
+        drone1, _ = self.make_drone("drone-001", "Drone1", endpoint="serial://COM3:57600")
+        drone2, _ = self.make_drone("drone-002", "Drone2", endpoint="serial://COM4:57600")
+        fleet = Fleet([drone1, drone2])
+        self.assertTrue(fleet.connect().ok)
+        for drone in (drone1, drone2):
+            drone.state._update(
+                health_local_position_ok=True,
+                local_x_m=0.0,
+                local_y_m=0.0,
+                local_z_m=0.0,
+                last_event_updated_at_s=time.monotonic(),
+            )
+
+        result = Plan(fleet.drones()).wait_until_ready(timeout_s=0.1).run(
+            guard_interval_s=0.001
+        )
+
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(set(result.device_results), {"drone-001", "drone-002"})
+        fleet.close()
+
+    def test_drone_fleet_ensure_land_preserves_cleanup_results(self) -> None:
+        drone1, client1 = self.make_drone("drone-001", "Drone1", endpoint="serial://COM3:57600")
+        drone2, client2 = self.make_drone("drone-002", "Drone2", endpoint="serial://COM4:57600")
+        fleet = Fleet([drone1, drone2])
+        self.assertTrue(fleet.connect().ok)
+        for drone in (drone1, drone2):
+            drone.state._update(armed=False, in_air=False)
+
+        result = (
+            Plan(fleet.drones())
+            .when(lambda _ctx: True, reason="abort fleet route")
+            .ensure_land(timeout_s=1.0)
+            .run(guard_interval_s=0.001)
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIsNotNone(result.cleanup_result)
+        assert result.cleanup_result is not None
+        self.assertTrue(result.cleanup_result.ok)
+        self.assertIn(("land",), client1.calls)
+        self.assertIn(("land",), client2.calls)
+        fleet.close()
+
     def test_drone_fleet_unlock_can_force_arm_members(self) -> None:
         drone1, client1 = self.make_drone("drone-001", "Drone1")
         drone2, client2 = self.make_drone("drone-002", "Drone2")
@@ -691,6 +745,87 @@ class FleetTest(unittest.TestCase):
         self.assertEqual(status.state, FollowSessionState.RUNNING)
         self.assertEqual(status.followers["drone-002"].mode, FollowMode.CHASE)
         self.assertEqual(fleet.follow_sessions, ())
+        fleet.close()
+
+    def test_follow_start_rejects_different_unidentified_local_origins(self) -> None:
+        leader = Drone.from_managed_object(
+            ProductType.PX4_GENERIC,
+            FakeFleetDroneClient(),
+            metadata=DeviceMetadata(device_id="leader"),
+        )
+        follower = Drone.from_managed_object(
+            ProductType.PX4_GENERIC,
+            FakeFleetDroneClient(),
+            metadata=DeviceMetadata(device_id="follower"),
+        )
+        for device in (leader, follower):
+            device.state._update(
+                local_x_m=0.0,
+                local_y_m=0.0,
+                local_position_frame=CoordinateFrame.LOCAL_NED,
+            )
+        fleet = Fleet([leader, follower])
+        session = fleet.follow(leader=leader, followers=[follower])
+
+        with self.assertRaisesRegex(RuntimeError, "local_frame_id"):
+            session.start(FollowExecutionOptions(stop_action="none"))
+
+        fleet.close()
+
+    def test_follow_uses_global_common_frame_when_local_origins_differ(self) -> None:
+        leader_client = FakeFleetDroneClient()
+        follower_client = FakeFleetDroneClient()
+        leader = Drone.from_managed_object(
+            ProductType.PX4_GENERIC,
+            leader_client,
+            metadata=DeviceMetadata(device_id="leader", local_frame_id="leader-ekf"),
+        )
+        follower = Drone.from_managed_object(
+            ProductType.PX4_GENERIC,
+            follower_client,
+            metadata=DeviceMetadata(device_id="follower", local_frame_id="follower-ekf"),
+        )
+        updated_at_s = time.monotonic()
+        leader.state._update(
+            latitude_deg=30.0001,
+            longitude_deg=120.0,
+            absolute_altitude_m=20.0,
+            global_position_updated_at_s=updated_at_s,
+            local_x_m=100.0,
+            local_y_m=50.0,
+            local_z_m=20.0,
+            local_position_updated_at_s=updated_at_s,
+            local_position_frame=CoordinateFrame.LOCAL_NED,
+        )
+        follower.state._update(
+            latitude_deg=30.0,
+            longitude_deg=120.0,
+            absolute_altitude_m=20.0,
+            global_position_updated_at_s=updated_at_s,
+            local_x_m=-40.0,
+            local_y_m=10.0,
+            local_z_m=20.0,
+            local_position_updated_at_s=updated_at_s,
+            local_position_frame=CoordinateFrame.LOCAL_NED,
+        )
+        fleet = Fleet([leader, follower])
+        self.assertTrue(fleet.connect().ok)
+        session = fleet.follow(
+            leader=leader,
+            followers=[follower],
+            policy=FollowPolicy.chase(distance_m=5.0),
+        )
+
+        session.start(FollowExecutionOptions(interval_s=0.01, stop_action="none"))
+        time.sleep(0.04)
+        status = session.status()
+        session.stop()
+
+        self.assertEqual(status.state, FollowSessionState.RUNNING)
+        self.assertTrue(
+            [call for call in follower_client.calls if call[0] == "set_velocity"],
+            status,
+        )
         fleet.close()
 
     def test_follow_session_can_update_policy_while_running(self) -> None:

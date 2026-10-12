@@ -26,7 +26,11 @@ class ProjectAirSimRtspStatus:
     ``running`` 表示桥接器已经启动且尚未关闭；三个帧计数分别表示从仿真器接收、存在 RTSP 客户端时
     成功写入 GStreamer 管线，以及因实时队列覆盖而丢弃的帧数。``last_frame_received_at_s`` 使用当前
     进程单调时钟秒值，没有收到帧时为 ``None``。该对象只用于诊断，不代表下游客户端已经完成解码；
-    没有客户端连接时 ``frames_published`` 可以保持为零。
+    没有客户端连接时 ``frames_published`` 可以保持为零。``width_px`` 和 ``height_px`` 是最近收到的
+    原始 RGB 帧像素尺寸，首帧到达前为 ``None``；``target_frame_rate_hz`` 和
+    ``target_bitrate_kbps`` 分别是 RTSP 编码目标帧率和目标码率，实际输出会随画面复杂度变化。
+    ``gop_frames`` 是关键帧间隔帧数；``encoder_complexity`` 是 OpenH264 编码复杂度；
+    ``frame_skip_enabled`` 表示编码器来不及实时处理时是否允许跳过过时帧。
     """
 
     running: bool
@@ -34,6 +38,13 @@ class ProjectAirSimRtspStatus:
     frames_published: int
     dropped_frames: int
     last_frame_received_at_s: Optional[float]
+    width_px: Optional[int] = None
+    height_px: Optional[int] = None
+    target_frame_rate_hz: float = 0.0
+    target_bitrate_kbps: int = 0
+    gop_frames: int = 0
+    encoder_complexity: str = "medium"
+    frame_skip_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -50,7 +61,11 @@ class ProjectAirSimRtspBridge:
     桥接器内部使用 Project AirSim client 订阅仿真相机，通过容量为一个样本的实时队列把最新帧交给
     进程级 GStreamer RTSP Server 编码和发布。``robot_name`` 是场景
     机器人名称；``sensor_id`` 为 ``None`` 时选择主 RGB 相机；``rtsp_uri`` 必须是完整 RTSP 发布地址；
-    ``frame_rate_hz`` 单位为帧/秒，``bitrate_kbps`` 单位为千比特/秒；``startup_timeout_s`` 是等待
+    ``frame_rate_hz`` 单位为帧/秒，``bitrate_kbps`` 单位为千比特/秒；``gop_frames`` 是相邻关键帧
+    之间的最大帧数，越小越利于快速恢复画面但会增加码率；为 ``None`` 时按一秒帧数计算。
+    ``encoder_complexity`` 接受 ``low``、``medium`` 或 ``high``，复杂度越高通常同码率画质越好，
+    但占用更多 CPU。``enable_frame_skip`` 为 ``True`` 时编码跟不上实时输入会跳过旧帧，优先保持
+    低延迟；设为 ``False`` 可保留更多帧，但负载不足时可能积累延迟。``startup_timeout_s`` 是等待
     本机 RTSP Server 和首个仿真帧就绪的最长秒数。
 
     ``projectairsim_host``、topics/services 端口用于连接仿真服务，未传时读取同名环境变量或使用
@@ -67,6 +82,9 @@ class ProjectAirSimRtspBridge:
         rtsp_uri: Optional[str] = None,
         frame_rate_hz: float = 30.0,
         bitrate_kbps: int = 4_000,
+        gop_frames: Optional[int] = None,
+        encoder_complexity: str = "medium",
+        enable_frame_skip: bool = True,
         startup_timeout_s: float = 15.0,
         projectairsim_client: Any = None,
         projectairsim_host: Optional[str] = None,
@@ -81,6 +99,12 @@ class ProjectAirSimRtspBridge:
             raise ValueError("frame_rate_hz must be greater than 0.")
         if bitrate_kbps <= 0:
             raise ValueError("bitrate_kbps must be greater than 0.")
+        normalized_gop_frames = round(frame_rate_hz) if gop_frames is None else gop_frames
+        if normalized_gop_frames <= 0:
+            raise ValueError("gop_frames must be greater than 0.")
+        normalized_complexity = encoder_complexity.strip().lower()
+        if normalized_complexity not in {"low", "medium", "high"}:
+            raise ValueError("encoder_complexity must be 'low', 'medium' or 'high'.")
         if startup_timeout_s <= 0:
             raise ValueError("startup_timeout_s must be greater than 0.")
         normalized_robot_name = robot_name.strip()
@@ -101,6 +125,9 @@ class ProjectAirSimRtspBridge:
         self._rtsp_path = parsed_uri.path
         self._frame_rate_hz = float(frame_rate_hz)
         self._bitrate_kbps = int(bitrate_kbps)
+        self._gop_frames = int(normalized_gop_frames)
+        self._encoder_complexity = normalized_complexity
+        self._enable_frame_skip = bool(enable_frame_skip)
         self._startup_timeout_s = float(startup_timeout_s)
         self._publisher_factory = _publisher_factory
         self._sensor_backend = _sensor_backend
@@ -133,6 +160,8 @@ class ProjectAirSimRtspBridge:
         self._frames_published = 0
         self._dropped_frames = 0
         self._last_frame_received_at_s: Optional[float] = None
+        self._width_px: Optional[int] = None
+        self._height_px: Optional[int] = None
 
     @property
     def stream_uri(self) -> str:
@@ -168,6 +197,9 @@ class ProjectAirSimRtspBridge:
                 self._rtsp_path,
                 frame_rate_hz=self._frame_rate_hz,
                 bitrate_kbps=self._bitrate_kbps,
+                gop_frames=self._gop_frames,
+                encoder_complexity=self._encoder_complexity,
+                enable_frame_skip=self._enable_frame_skip,
                 startup_timeout_s=self._startup_timeout_s,
             )
             self._publisher.start()
@@ -212,6 +244,13 @@ class ProjectAirSimRtspBridge:
                 frames_published=self._frames_published,
                 dropped_frames=self._dropped_frames,
                 last_frame_received_at_s=self._last_frame_received_at_s,
+                width_px=self._width_px,
+                height_px=self._height_px,
+                target_frame_rate_hz=self._frame_rate_hz,
+                target_bitrate_kbps=self._bitrate_kbps,
+                gop_frames=self._gop_frames,
+                encoder_complexity=self._encoder_complexity,
+                frame_skip_enabled=self._enable_frame_skip,
             )
 
     def close(self) -> None:
@@ -309,9 +348,6 @@ class ProjectAirSimRtspBridge:
             self._frames_received += 1
             self._last_frame_received_at_s = time.monotonic()
         try:
-            # [UAV-IDE MODIFY] Keep the Project AirSim callback O(1). Pixel copying and
-            # stride normalization run on the dedicated publisher thread so multi-camera
-            # streams cannot build a stale callback backlog after FleetDock reinitializes.
             self._frames.put_nowait(sample)
         except Full:
             try:
@@ -320,7 +356,7 @@ class ProjectAirSimRtspBridge:
                 pass
             with self._lock:
                 self._dropped_frames += 1
-            self._frames.put_nowait(frame)
+            self._frames.put_nowait(sample)
 
     @staticmethod
     def _raw_frame(frame: ImageFrame) -> _RawVideoFrame:
@@ -357,6 +393,9 @@ class ProjectAirSimRtspBridge:
                 except Empty:
                     continue
                 frame = self._raw_frame(sample)
+                with self._lock:
+                    self._width_px = frame.width
+                    self._height_px = frame.height
                 publisher = self._publisher
                 if publisher is None:
                     raise RuntimeError("GStreamer RTSP publisher is unavailable.")

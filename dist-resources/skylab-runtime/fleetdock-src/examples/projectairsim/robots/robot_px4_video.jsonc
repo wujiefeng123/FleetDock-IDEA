@@ -16,8 +16,8 @@
       "capture-settings": [
         {
           "image-type": 0,
-          "width": 640,
-          "height": 480,
+          "width": 960,
+          "height": 540,
           "fov-degrees": 90,
           "capture-enabled": true,
           "streaming-enabled": true,

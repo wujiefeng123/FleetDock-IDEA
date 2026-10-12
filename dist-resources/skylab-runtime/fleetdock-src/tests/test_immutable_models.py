@@ -1,4 +1,5 @@
 import unittest
+from math import inf, nan
 
 from fleetdock import CommandName, DeviceMetadata, ProductType, StandardCommand, StandardResponse
 
@@ -25,6 +26,31 @@ class ImmutablePublicModelsTest(unittest.TestCase):
 
         self.assertEqual(command.params["target"]["x_m"], 1.0)
         self.assertEqual(response.data["trace"], ("accepted",))
+
+    def test_local_frame_id_is_normalized_and_rejects_empty_values(self) -> None:
+        metadata = DeviceMetadata(local_frame_id="  shared-vio-map  ")
+
+        self.assertEqual(metadata.local_frame_id, "shared-vio-map")
+        with self.assertRaises(ValueError):
+            DeviceMetadata(local_frame_id="   ")
+
+    def test_standard_command_timeout_must_be_positive_and_finite(self) -> None:
+        for timeout_s in (0.0, -1.0, inf, nan):
+            with self.subTest(timeout_s=timeout_s), self.assertRaises(ValueError):
+                StandardCommand(
+                    CommandName.MOVE,
+                    "device-1",
+                    ProductType.MOCK_DRONE,
+                    timeout_s=timeout_s,
+                )
+
+        command = StandardCommand(
+            CommandName.MOVE,
+            "device-1",
+            ProductType.MOCK_DRONE,
+            timeout_s=2.5,
+        )
+        self.assertEqual(command.timeout_s, 2.5)
 
 
 if __name__ == "__main__":

@@ -299,6 +299,9 @@ class FleetPlan(DevicePlan):
             failed_devices=failed,
             failed_step=handled.failed_step,
             triggered_guard=handled.triggered_guard,
+            completion_reason=handled.completion_reason,
+            safety_action=handled.safety_action,
+            cleanup_result=handled.cleanup_result,
         )
 
 
@@ -319,7 +322,14 @@ class DroneFleetPlan(FleetPlan):
         return self._add("lock")
 
     def takeoff(self, altitude: float = 5.0) -> "DroneFleetPlan":
-        """把全部无人机起飞动作加入计划队列；`altitude` 是目标相对高度，单位为米，返回当前计划。"""
+        """把全部无人机自动适配起飞动作加入计划队列。
+
+        ``altitude`` 是相对各自起飞地面的目标高度（米）；每个成员由其适配器独立选择底层链路，
+        业务代码无需按品牌分支。建议此前调用 ``wait_until_ready()`` 形成全成员就绪屏障。
+        返回当前计划。
+        """
+        if altitude <= 0:
+            raise ValueError("takeoff altitude must be greater than 0.")
         return self._add("takeoff", altitude=altitude)
 
     def wait_until_ready(
@@ -327,15 +337,15 @@ class DroneFleetPlan(FleetPlan):
         timeout_s: float = 60.0,
         *,
         require_global_position: bool = False,
-        require_armable: bool = True,
+        require_armable: bool = False,
         capability: CapabilityName = CapabilityName.TAKEOFF,
         progress_callback: Optional[Any] = None,
     ) -> "DroneFleetPlan":
         """把全部无人机起飞前就绪等待加入计划队列。
 
-        `timeout_s` 是最长等待时间，单位为秒；`require_global_position` 为 True 时要求全球定位也
-        就绪；`require_armable` 为 False 时不等待 PX4 armable 标志，适合显式启用强制解锁的
-        SITL 调试场景。``capability`` 选择目标标准能力；``progress_callback`` 分别收到成员设备
+        ``timeout_s`` 是最长等待时间，单位为秒。默认让每个成员按自身适配器选择健康的本地或
+        全球定位链路；``require_global_position=True`` 可为室外任务强制全部成员具备全球定位，
+        ``require_armable=True`` 可额外等待可解锁标志。``capability`` 选择目标标准能力；``progress_callback`` 分别收到成员设备
         的 ``ReadinessReport``。返回当前 DroneFleetPlan。
         """
         return self._add(
@@ -351,9 +361,42 @@ class DroneFleetPlan(FleetPlan):
         """把全部无人机降落动作加入计划队列，返回当前 DroneFleetPlan。"""
         return self._add("land")
 
+    def ensure_land(self, *, timeout_s: float = 120.0) -> "DroneFleetPlan":
+        """把全部成员的必执行降落加入计划并返回当前计划。
+
+        正常路径并发执行并逐机确认降落；此前步骤出现部分或全部失败时，会对当前无人机作用域启动
+        独立降落计划，并把 Fleet 级结果写入 ``cleanup_result``。``timeout_s`` 是每台成员的最长
+        降落确认秒数且必须大于零。该入口不要求 GPS 或 Home，适用于室内外统一收尾。
+        """
+        if timeout_s <= 0:
+            raise ValueError("ensure_land timeout must be greater than 0.")
+
+        def land_after_failure(_context: Any, _result: TaskResult) -> TaskResult:
+            return DroneFleetPlan(self._scope_fleet).land().run(step_timeout_s=timeout_s)
+
+        self.on_failed(land_after_failure)
+        return self.land()
+
     def return_to_launch(self) -> "DroneFleetPlan":
         """把全部无人机返航动作加入计划队列，返回当前 DroneFleetPlan。"""
         return self._add("return_to_launch")
+
+    def ensure_return_to_launch(self, *, timeout_s: float = 240.0) -> "DroneFleetPlan":
+        """把全部成员的必执行返航加入计划并返回当前计划。
+
+        正常路径并发触发 RTL 并逐机等待落地或上锁；此前步骤失败时，会对当前无人机作用域启动
+        独立返航计划并把 Fleet 结果写入 ``cleanup_result``。``timeout_s`` 是每台成员的最长确认
+        秒数且必须大于零；该入口要求各成员具备有效全球位置和 Home，室内无 GPS 场景应使用
+        ``ensure_land()``。
+        """
+        if timeout_s <= 0:
+            raise ValueError("ensure_return_to_launch timeout must be greater than 0.")
+
+        def return_after_failure(_context: Any, _result: TaskResult) -> TaskResult:
+            return DroneFleetPlan(self._scope_fleet).return_to_launch().run(step_timeout_s=timeout_s)
+
+        self.on_failed(return_after_failure)
+        return self.return_to_launch()
 
     def hover(self) -> "DroneFleetPlan":
         """把全部无人机悬停动作加入计划队列，返回当前 DroneFleetPlan。"""

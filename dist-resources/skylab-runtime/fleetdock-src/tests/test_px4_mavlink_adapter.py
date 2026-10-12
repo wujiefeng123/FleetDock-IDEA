@@ -1,5 +1,7 @@
 import asyncio
 import sys
+import threading
+import time
 import types
 import unittest
 from dataclasses import replace
@@ -18,8 +20,12 @@ from fleetdock import (
     RelativePoint3D,
     Route,
     SensorKind,
+    TakeoffMethod,
+    TakeoffOptions,
 )
 from fleetdock.adapters import MavsdkClient, Px4MavlinkAdapter
+from fleetdock.errors import FleetDockError
+from fleetdock.models import ErrorCode
 from fleetdock.registry import ProductRegistry, default_registry
 
 
@@ -99,6 +105,28 @@ class SensorCapableFakeMavsdkClient(FakeMavsdkClient):
         return lambda: None
 
 
+class DemandAwareFakeMavsdkClient(FakeMavsdkClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.active_demands: list[frozenset[str]] = []
+
+    def acquire_telemetry(self, stream_names, *, owner="consumer"):
+        selected = frozenset(stream_names)
+        self.active_demands.append(selected)
+        self.calls.append(("acquire_telemetry", owner, tuple(sorted(selected))))
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            self.active_demands.remove(selected)
+            self.calls.append(("release_telemetry", owner, tuple(sorted(selected))))
+
+        return release
+
+
 class FailingConnectClient(FakeMavsdkClient):
     def connect(self) -> None:
         self.calls.append(("connect",))
@@ -138,6 +166,9 @@ class FakeMavsdkSystem:
             longitude_deg=121.5,
         )
 
+    async def set_rate_position(self, rate_hz: float) -> None:
+        self.calls.append(("set_rate_position", rate_hz))
+
     async def velocity_ned(self):
         yield types.SimpleNamespace(north_m_s=1.0, east_m_s=2.0, down_m_s=-0.5)
 
@@ -146,14 +177,23 @@ class FakeMavsdkSystem:
             position=types.SimpleNamespace(north_m=3.0, east_m=4.0, down_m=-8.5)
         )
 
+    async def set_rate_position_velocity_ned(self, rate_hz: float) -> None:
+        self.calls.append(("set_rate_position_velocity_ned", rate_hz))
+
     async def home(self):
         yield types.SimpleNamespace(latitude_deg=31.2, longitude_deg=121.5, absolute_altitude_m=100.0)
 
     async def attitude_euler(self):
         yield types.SimpleNamespace(roll_deg=1.0, pitch_deg=2.0, yaw_deg=3.0)
 
+    async def set_rate_attitude_euler(self, rate_hz: float) -> None:
+        self.calls.append(("set_rate_attitude_euler", rate_hz))
+
     async def battery(self):
         yield types.SimpleNamespace(remaining_percent=0.8, voltage_v=24.0)
+
+    async def set_rate_battery(self, rate_hz: float) -> None:
+        self.calls.append(("set_rate_battery", rate_hz))
 
     async def armed(self):
         yield True
@@ -168,7 +208,11 @@ class FakeMavsdkSystem:
         yield types.SimpleNamespace(name="HOLD")
 
     async def health(self):
-        yield types.SimpleNamespace(is_local_position_ok=True, is_global_position_ok=True)
+        yield types.SimpleNamespace(
+            is_local_position_ok=True,
+            is_global_position_ok=True,
+            is_home_position_ok=True,
+        )
 
     async def arm(self) -> None:
         self.calls.append(("arm",))
@@ -255,50 +299,83 @@ class DelayedVersionFakeMavsdkSystem(FakeMavsdkSystem):
 
 
 class Px4MavlinkAdapterTest(unittest.TestCase):
-    # [UAV-IDE MODIFY] Keep the temporary real-device probe aligned with the
-    # installed MAVSDK heartbeat and Info plugin contracts.
-    def test_client_reads_system_identity_without_control_commands(self) -> None:
-        class FakeDirect:
-            async def message(self, message_name):
-                self.message_name = message_name
-                yield types.SimpleNamespace(system_id=7, component_id=1)
+    def test_filtered_event_subscription_transparently_acquires_and_releases_stream(self) -> None:
+        client = DemandAwareFakeMavsdkClient()
+        drone = Drone.from_managed_object(ProductType.PX4_GENERIC, client)
 
-        class FakeInfo:
-            async def get_version(self):
-                return types.SimpleNamespace(
-                    flight_sw_major=1,
-                    flight_sw_minor=16,
-                    flight_sw_patch=2,
-                    flight_sw_git_hash="abcdef",
-                )
+        unsubscribe = drone.events.on(EventType.GLOBAL_POSITION_UPDATED, lambda _event: None)
+        self.assertIn(frozenset({"position"}), client.active_demands)
+        unsubscribe()
+        self.assertNotIn(frozenset({"position"}), client.active_demands)
+        drone.close()
 
-            async def get_identification(self):
-                return types.SimpleNamespace(
-                    hardware_uid="hardware-uid",
-                    legacy_uid="legacy-uid",
-                )
-
-            async def get_product(self):
-                return types.SimpleNamespace(
-                    vendor_name="PX4",
-                    product_name="Test Flight Controller",
-                    vendor_id=1,
-                    product_id=2,
-                )
-
-        client = MavsdkClient("udpin://0.0.0.0:14550")
-        client._system = types.SimpleNamespace(
-            mavlink_direct=FakeDirect(),
-            info=FakeInfo(),
-        )
+    def test_client_starts_only_baseline_streams_until_demand_is_acquired(self) -> None:
+        client = MavsdkClient("udpin://0.0.0.0:14550", timeout_s=1.0, link_profile="low_bandwidth")
+        client._system = FakeMavsdkSystem()
         client._connected = True
-        identity = asyncio.run(client._get_system_identity(1.0))
+        received = []
+        try:
+            client.start_telemetry(lambda name, data, native: received.append((name, data, native)))
+            deadline = time.monotonic() + 1.0
+            while not client._BASELINE_TELEMETRY_STREAMS.issubset({name for name, _, _ in received}):
+                if time.monotonic() >= deadline:
+                    self.fail(f"baseline telemetry did not arrive: {received}")
+                time.sleep(0.01)
+            self.assertFalse({"position", "local_position", "home", "velocity_ned", "attitude"} & {
+                name for name, _, _ in received
+            })
 
-        self.assertEqual(identity["system_id"], 7)
-        self.assertEqual(identity["component_id"], 1)
-        self.assertEqual(identity["firmware_version"], "1.16.2")
-        self.assertEqual(identity["hardware_uid"], "hardware-uid")
-        self.assertEqual(identity["product_name"], "Test Flight Controller")
+            release = client.acquire_telemetry({"position", "attitude"}, owner="test.filtered")
+            deadline = time.monotonic() + 1.0
+            while not {"position", "attitude"}.issubset({name for name, _, _ in received}):
+                if time.monotonic() >= deadline:
+                    self.fail(f"demand telemetry did not arrive: {received}")
+                time.sleep(0.01)
+            release()
+            diagnostics = client.telemetry_diagnostics()
+            self.assertNotIn("position", diagnostics["requested_streams"])
+            self.assertEqual(client.link_profile, "low_bandwidth")
+        finally:
+            client.close()
+
+    def test_standard_command_timeout_limits_mavsdk_wait(self) -> None:
+        client = MavsdkClient("udpin://0.0.0.0:14550", timeout_s=1.0)
+
+        async def slow_operation() -> None:
+            await asyncio.sleep(1.0)
+
+        started_at_s = time.monotonic()
+        try:
+            with client._use_command_timeout(0.01):
+                with self.assertRaisesRegex(TimeoutError, "within 0.010 seconds"):
+                    client._run(slow_operation())
+            self.assertLess(time.monotonic() - started_at_s, 0.5)
+        finally:
+            client.close()
+
+    def test_telemetry_callbacks_are_dispatched_in_order_off_event_loop(self) -> None:
+        received = []
+
+        def callback(stream_name, data, native_data) -> None:
+            received.append((stream_name, data["sequence"], native_data, threading.get_ident()))
+
+        async def run_dispatch() -> int:
+            event_loop_thread_id = threading.get_ident()
+            callback_queue = asyncio.Queue()
+            dispatcher = asyncio.create_task(
+                MavsdkClient._dispatch_telemetry_callbacks(callback_queue, callback)
+            )
+            callback_queue.put_nowait(("first", {"sequence": 1}, "native-1"))
+            callback_queue.put_nowait(("second", {"sequence": 2}, "native-2"))
+            await callback_queue.join()
+            dispatcher.cancel()
+            await asyncio.gather(dispatcher, return_exceptions=True)
+            return event_loop_thread_id
+
+        event_loop_thread_id = asyncio.run(run_dispatch())
+
+        self.assertEqual([(item[0], item[1]) for item in received], [("first", 1), ("second", 2)])
+        self.assertTrue(all(item[3] != event_loop_thread_id for item in received))
 
     def test_sensor_stream_requests_rate_before_consuming_samples(self) -> None:
         client = MavsdkClient("udpin://0.0.0.0:14550", timeout_s=0.1)
@@ -338,6 +415,32 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
             )
         )
         self.assertEqual(received, ["sample", "sample"])
+        client.close()
+
+    def test_control_telemetry_continues_when_rate_request_is_rejected(self) -> None:
+        client = MavsdkClient("udpin://0.0.0.0:14550", timeout_s=0.1)
+        received = []
+
+        async def reject_rate(rate_hz):
+            raise RuntimeError(f"rate {rate_hz} unsupported")
+
+        async def stream():
+            yield {"x": 3.0}
+
+        asyncio.run(
+            client._consume_telemetry(
+                "local_position",
+                stream,
+                lambda stream_name, data, native: received.append((stream_name, data, native)),
+                dict,
+                rate_setter=reject_rate,
+                rate_hz=5.0,
+            )
+        )
+
+        self.assertEqual(received[0][0], "telemetry_error")
+        self.assertEqual(received[0][1]["error"], "rate_configuration_failed")
+        self.assertEqual(received[1], ("local_position", {"x": 3.0}, {"x": 3.0}))
         client.close()
 
     def test_mavsdk_client_discovers_camera_video_stream_uri(self) -> None:
@@ -402,6 +505,260 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
 
         self.assertEqual(DelayedVersionFakeMavsdkSystem.latest.version_attempts, 2)
 
+    def test_mavsdk_battery_percent_is_normalized_to_fraction(self) -> None:
+        self.assertEqual(
+            MavsdkClient._map_battery(
+                types.SimpleNamespace(remaining_percent=80.0, voltage_v=24.0)
+            ),
+            {"remaining_fraction": 0.8, "voltage_v": 24.0},
+        )
+        self.assertEqual(
+            MavsdkClient._map_battery(
+                types.SimpleNamespace(remaining_percent=0.8, voltage_v=None)
+            ),
+            {"remaining_fraction": 0.8},
+        )
+
+    @staticmethod
+    def _local_takeoff_client(*, battery_age_s: float, remaining_fraction: float = 0.8) -> MavsdkClient:
+        client = MavsdkClient("udpin://0.0.0.0:14550")
+        now_s = time.monotonic()
+        client._latest_status = {
+            "local_position": {"position_m": {"x": 0.0, "y": 0.0, "z": -0.5}},
+            "attitude": {"roll_deg": 0.0, "pitch_deg": 0.0, "yaw_deg": 0.0},
+            "battery": {"remaining_fraction": remaining_fraction},
+        }
+        client._status_updated_at = {
+            "local_position": now_s,
+            "attitude": now_s,
+            "battery": now_s - battery_age_s,
+        }
+        return client
+
+    def test_local_takeoff_allows_short_battery_telemetry_delay(self) -> None:
+        client = self._local_takeoff_client(battery_age_s=6.0)
+        try:
+            measured_m = client._validate_local_takeoff_safety(
+                TakeoffOptions(target_altitude_m=1.0),
+                ground_north_m=0.0,
+                ground_east_m=0.0,
+                ground_down_m=0.0,
+            )
+            self.assertAlmostEqual(measured_m, 0.5)
+        finally:
+            client.close()
+
+    def test_takeoff_precheck_keeps_strict_battery_telemetry_age(self) -> None:
+        client = self._local_takeoff_client(battery_age_s=6.0)
+        now_s = time.monotonic()
+        client._latest_status["health"] = {"is_local_position_ok": True}
+        client._status_updated_at["health"] = now_s
+        try:
+            with self.assertRaisesRegex(TimeoutError, "required takeoff telemetry"):
+                asyncio.run(
+                    client._wait_for_takeoff_telemetry(
+                        deadline=time.monotonic() + 0.01,
+                        options=TakeoffOptions(target_altitude_m=1.0),
+                        cancellation_check=None,
+                    )
+                )
+        finally:
+            client.close()
+
+    def test_local_takeoff_rejects_expired_battery_telemetry(self) -> None:
+        client = self._local_takeoff_client(battery_age_s=16.0)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "stale supervisory telemetry: battery"):
+                client._validate_local_takeoff_safety(
+                    TakeoffOptions(target_altitude_m=1.0),
+                    ground_north_m=0.0,
+                    ground_east_m=0.0,
+                    ground_down_m=0.0,
+                )
+        finally:
+            client.close()
+
+    def test_local_takeoff_still_rejects_low_battery(self) -> None:
+        client = self._local_takeoff_client(battery_age_s=0.0, remaining_fraction=0.1)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "battery fell below"):
+                client._validate_local_takeoff_safety(
+                    TakeoffOptions(target_altitude_m=1.0),
+                    ground_north_m=0.0,
+                    ground_east_m=0.0,
+                    ground_down_m=0.0,
+                )
+        finally:
+            client.close()
+
+    def test_outdoor_takeoff_handoff_stops_offboard_without_duplicate_hold(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("udpin://0.0.0.0:14550")
+        client._system = system
+        client._connected = True
+        client._offboard_started = True
+        now_s = time.monotonic()
+        client._latest_status["health"] = {
+            "is_global_position_ok": True,
+            "is_home_position_ok": True,
+        }
+        client._latest_status["position"] = {"latitude_deg": 31.2, "longitude_deg": 121.5}
+        client._latest_status["home"] = {"absolute_altitude_m": 100.0}
+        client._status_updated_at.update({"health": now_s, "position": now_s, "home": now_s})
+
+        reason = asyncio.run(
+            client._complete_takeoff_handoff(
+                system,
+                method=TakeoffMethod.LOCAL_POSITION,
+                health_max_age_s=5.0,
+            )
+        )
+
+        self.assertEqual(system.calls, [("offboard_stop",)])
+        self.assertFalse(client._offboard_started)
+        self.assertIn("飞控 Hold", reason)
+
+    def test_indoor_takeoff_handoff_keeps_local_offboard_active(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("udpin://0.0.0.0:14550")
+        client._system = system
+        client._offboard_started = True
+        now_s = time.monotonic()
+        client._latest_status["health"] = {
+            "is_local_position_ok": True,
+            "is_global_position_ok": False,
+            "is_home_position_ok": False,
+        }
+        client._status_updated_at["health"] = now_s
+
+        reason = asyncio.run(
+            client._complete_takeoff_handoff(
+                system,
+                method=TakeoffMethod.LOCAL_POSITION,
+                health_max_age_s=5.0,
+            )
+        )
+
+        self.assertEqual(system.calls, [])
+        self.assertTrue(client._offboard_started)
+        self.assertIn("Offboard 保持位置", reason)
+
+    def test_indoor_hold_keeps_offboard_and_locks_current_local_position(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("serial://COM3:57600")
+        client._system = system
+        client._connected = True
+        client._offboard_started = True
+        now_s = time.monotonic()
+        client._latest_status.update({
+            "local_position": {"position_m": {"x": 2.0, "y": -3.0, "z": -1.5}},
+            "attitude": {"yaw_deg": 45.0},
+            "health": {
+                "is_local_position_ok": True,
+                "is_global_position_ok": False,
+                "is_home_position_ok": False,
+            },
+        })
+        client._status_updated_at.update({
+            "local_position": now_s,
+            "attitude": now_s,
+            "health": now_s,
+        })
+        offboard_module = types.ModuleType("mavsdk.offboard")
+        offboard_module.PositionNedYaw = FakePositionNedYaw
+
+        with patch.dict(sys.modules, {"mavsdk.offboard": offboard_module}):
+            asyncio.run(client._hold())
+
+        self.assertEqual(system.calls, [("set_position_ned", 2.0, -3.0, -1.5, 45.0)])
+        self.assertTrue(client._offboard_started)
+
+    def test_indoor_hold_prestreams_before_starting_offboard(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("serial://COM3:57600")
+        client._system = system
+        client._connected = True
+        now_s = time.monotonic()
+        client._latest_status.update({
+            "local_position": {"position_m": {"x": 1.0, "y": 2.0, "z": -1.0}},
+            "attitude": {"yaw_deg": 30.0},
+            "health": {"is_local_position_ok": True},
+        })
+        client._status_updated_at.update({
+            "local_position": now_s,
+            "attitude": now_s,
+            "health": now_s,
+        })
+        offboard_module = types.ModuleType("mavsdk.offboard")
+        offboard_module.PositionNedYaw = FakePositionNedYaw
+
+        async def no_sleep(_delay_s: float) -> None:
+            return None
+
+        with (
+            patch.dict(sys.modules, {"mavsdk.offboard": offboard_module}),
+            patch.object(asyncio, "sleep", new=no_sleep),
+        ):
+            asyncio.run(client._hold())
+
+        self.assertEqual(system.calls[-1], ("offboard_start",))
+        self.assertEqual(system.calls.count(("set_position_ned", 1.0, 2.0, -1.0, 30.0)), 10)
+        self.assertTrue(client._offboard_started)
+
+    def test_hold_rejects_when_neither_position_chain_is_safe(self) -> None:
+        client = MavsdkClient("serial://COM3:57600")
+        client._system = FakeMavsdkSystem()
+        client._connected = True
+
+        with self.assertRaises(FleetDockError) as raised:
+            asyncio.run(client._hold())
+
+        self.assertEqual(raised.exception.code, ErrorCode.HOLD_STRATEGY_UNAVAILABLE)
+
+    def test_indoor_land_skips_offboard_stop(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("udpin://0.0.0.0:14550")
+        client._system = system
+        client._connected = True
+        client._offboard_started = True
+        now_s = time.monotonic()
+        client._latest_status["health"] = {
+            "is_local_position_ok": True,
+            "is_global_position_ok": False,
+            "is_home_position_ok": False,
+        }
+        client._status_updated_at["health"] = now_s
+
+        asyncio.run(client._land())
+
+        self.assertEqual(system.calls, [("land",)])
+        self.assertFalse(client._offboard_started)
+
+    def test_indoor_takeoff_abort_lands_without_offboard_stop(self) -> None:
+        system = FakeMavsdkSystem()
+        client = MavsdkClient("udpin://0.0.0.0:14550")
+        client._system = system
+        client._connected = True
+        client._offboard_started = True
+        now_s = time.monotonic()
+        client._latest_status.update(
+            {
+                "armed": {"armed": True},
+                "in_air": {"in_air": True},
+                "health": {
+                    "is_local_position_ok": True,
+                    "is_global_position_ok": False,
+                    "is_home_position_ok": False,
+                },
+            }
+        )
+        client._status_updated_at["health"] = now_s
+
+        asyncio.run(client._safe_abort_takeoff())
+
+        self.assertEqual(system.calls, [("land",)])
+        self.assertFalse(client._offboard_started)
+
     def test_mavsdk_client_reuses_one_system_for_standard_commands(self) -> None:
         mavsdk_module = types.ModuleType("mavsdk")
         mavsdk_module.System = FakeMavsdkSystem
@@ -414,8 +771,13 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
             client = MavsdkClient("udpin://0.0.0.0:14550", timeout_s=1.0)
             client.connect()
             received = []
+            release_all = client.acquire_telemetry(client._TELEMETRY_STREAMS, owner="test.all")
             client.start_telemetry(lambda name, data, native: received.append((name, data, native)))
-            client._telemetry_future.result(timeout=1.0)
+            deadline = time.monotonic() + 1.0
+            while len({name for name, _, _ in received}) < len(client._TELEMETRY_STREAMS):
+                if time.monotonic() >= deadline:
+                    self.fail(f"telemetry streams did not arrive: {received}")
+                time.sleep(0.01)
             status = client.get_status()
             client.arm()
             client.disarm()
@@ -430,6 +792,7 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
             client.land()
             client.return_to_launch()
             client.emergency_stop()
+            release_all()
             client.close()
 
         self.assertEqual(status["relative_altitude_m"], 8.5)
@@ -439,8 +802,16 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
             "landed_state", "flight_mode", "health", "local_position"
         })
 
+        rate_calls = {call for call in FakeMavsdkSystem.latest.calls if call[0].startswith("set_rate_")}
+        self.assertTrue({
+            ("set_rate_position_velocity_ned", 5.0),
+            ("set_rate_attitude_euler", 5.0),
+            ("set_rate_position", 1.0),
+            ("set_rate_battery", 1.0),
+        }.issubset(rate_calls))
+        command_calls = [call for call in FakeMavsdkSystem.latest.calls if not call[0].startswith("set_rate_")]
         self.assertEqual(
-            FakeMavsdkSystem.latest.calls,
+            command_calls,
             [
                 ("connect", "udpin://0.0.0.0:14550"),
                 ("arm",),
@@ -459,7 +830,6 @@ class Px4MavlinkAdapterTest(unittest.TestCase):
                 ("set_velocity_body", 1.0, -0.5, -0.25, 20.0),
                 ("set_position_ned", 4.0, 5.0, -6.0, 45.0),
                 ("offboard_stop",),
-                ("hold",),
                 ("goto_location", 31.2, 121.5, 120.0, 0.0),
                 ("set_velocity_ned", 0.0, 0.0, -0.0, 3.0),
                 ("offboard_start",),

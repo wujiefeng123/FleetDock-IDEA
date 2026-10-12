@@ -4,14 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 import math
-from threading import Lock
+from contextlib import contextmanager
+from threading import Lock, local
+import time
 from typing import Any, Callable, Dict, Mapping, Optional
+from uuid import uuid4
 
+from fleetdock.errors import FleetDockError
 from fleetdock.events import CoordinateFrame
+from fleetdock.models import ErrorCode
 from fleetdock.runtime import ManagedWorker, WorkerStatus
 from fleetdock.sensors import SensorSourceKind
+from fleetdock.takeoff import (
+    TakeoffExecutionState,
+    TakeoffMethod,
+    TakeoffOptions,
+    TakeoffProgressCallback,
+    TakeoffStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +37,27 @@ class MavsdkClient:
 
     _server_port_lock = Lock()
     _next_server_port = 50051
+    _TELEMETRY_STREAMS = frozenset({
+        "position",
+        "local_position",
+        "home",
+        "velocity_ned",
+        "attitude",
+        "battery",
+        "armed",
+        "in_air",
+        "landed_state",
+        "flight_mode",
+        "health",
+    })
+    _BASELINE_TELEMETRY_STREAMS = frozenset({
+        "battery",
+        "armed",
+        "in_air",
+        "landed_state",
+        "flight_mode",
+        "health",
+    })
 
     def __init__(
         self,
@@ -32,6 +66,11 @@ class MavsdkClient:
         mavsdk_server_port: Optional[int] = None,
         camera_stream_uri: Optional[str] = None,
         camera_stream_source: SensorSourceKind = SensorSourceKind.UNKNOWN,
+        sender_system_id: int = 245,
+        sender_component_id: int = 190,
+        target_system_id: int = 1,
+        target_component_id: int = 1,
+        link_profile: str = "standard",
     ) -> None:
         self.endpoint = endpoint
         self.timeout_s = timeout_s
@@ -42,6 +81,14 @@ class MavsdkClient:
         )
         self._camera_stream_uri_override = str(camera_stream_uri).strip() if camera_stream_uri else None
         self.camera_stream_source = camera_stream_source
+        self.sender_system_id = int(sender_system_id)
+        self.sender_component_id = int(sender_component_id)
+        self.target_system_id = int(target_system_id)
+        self.target_component_id = int(target_component_id)
+        selected_link_profile = str(link_profile).strip().lower()
+        if selected_link_profile not in {"simulation", "standard", "low_bandwidth"}:
+            raise ValueError("link_profile must be simulation, standard, or low_bandwidth.")
+        self.link_profile = selected_link_profile
         self._system: Optional[Any] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_worker: Optional[ManagedWorker] = None
@@ -49,9 +96,30 @@ class MavsdkClient:
         self._connected = False
         self._offboard_started = False
         self._telemetry_future: Optional[Any] = None
+        self._telemetry_callback: Optional[Callable[[str, Mapping[str, Any], Any], None]] = None
+        self._telemetry_demand_lock = Lock()
+        self._telemetry_demands: Dict[str, frozenset[str]] = {}
+        self._telemetry_tasks: Dict[str, asyncio.Task[Any]] = {}
+        self._telemetry_release_handles: Dict[str, asyncio.TimerHandle] = {}
+        self._telemetry_callback_queue: Optional[asyncio.Queue[tuple[str, Mapping[str, Any], Any]]] = None
+        self._telemetry_dispatcher: Optional[asyncio.Task[Any]] = None
+        self._telemetry_dropped_notifications = 0
+        self._telemetry_queue_high_watermark = 0
         self._sensor_futures: set[Any] = set()
         self._status_lock = Lock()
         self._latest_status: Dict[str, Any] = {}
+        self._status_updated_at: Dict[str, float] = {}
+        self._command_context = local()
+
+    @contextmanager
+    def _use_command_timeout(self, timeout_s: Optional[float]):
+        """在当前调用线程内临时覆盖标准命令等待上限。"""
+        previous = getattr(self._command_context, "timeout_s", None)
+        self._command_context.timeout_s = timeout_s
+        try:
+            yield
+        finally:
+            self._command_context.timeout_s = previous
 
     def connect(self) -> None:
         """连接 PX4 并验证双向 MAVLink 通道。
@@ -70,11 +138,14 @@ class MavsdkClient:
             raise RuntimeError("mavsdk is required for PX4 connections.") from exc
 
         system_parameters = inspect.signature(System).parameters
-        self._system = (
-            System(port=self.mavsdk_server_port)
-            if "port" in system_parameters
-            else System()
-        )
+        system_kwargs: Dict[str, Any] = {}
+        if "port" in system_parameters:
+            system_kwargs["port"] = self.mavsdk_server_port
+        if "sysid" in system_parameters:
+            system_kwargs["sysid"] = self.sender_system_id
+        if "compid" in system_parameters:
+            system_kwargs["compid"] = self.sender_component_id
+        self._system = System(**system_kwargs)
         system = self._system
         await system.connect(system_address=self.endpoint)
 
@@ -118,68 +189,6 @@ class MavsdkClient:
                 logger.debug("PX4 双向 MAVLink 握手暂未就绪，继续重试: error=%s", exc)
                 await asyncio.sleep(sleep_s)
 
-    # [UAV-IDE MODIFY] Expose read-only PX4 identity for the IDE's temporary
-    # hardware probe without sending any flight-control command.
-    def get_system_identity(self, timeout_s: float = 2.0) -> Dict[str, Any]:
-        """Return MAVLink IDs and MAVSDK product/version information."""
-        return self._run(self._get_system_identity(timeout_s))
-
-    async def _get_system_identity(self, timeout_s: float) -> Dict[str, Any]:
-        system = self._require_system()
-        identity: Dict[str, Any] = {}
-
-        try:
-            async def wait_heartbeat() -> Any:
-                async for message in system.mavlink_direct.message("HEARTBEAT"):
-                    return message
-
-            heartbeat = await asyncio.wait_for(
-                wait_heartbeat(), timeout=max(0.1, float(timeout_s))
-            )
-            identity["system_id"] = int(heartbeat.system_id)
-            identity["component_id"] = int(heartbeat.component_id)
-        except Exception:
-            logger.debug("读取 PX4 HEARTBEAT 标识失败", exc_info=True)
-
-        async def optional_info(call: Callable[[], Any]) -> Any:
-            try:
-                return await asyncio.wait_for(
-                    call(), timeout=max(0.1, float(timeout_s))
-                )
-            except Exception:
-                return None
-
-        version, identification, product = await asyncio.gather(
-            optional_info(system.info.get_version),
-            optional_info(system.info.get_identification),
-            optional_info(system.info.get_product),
-        )
-        if version is not None:
-            identity["firmware_version"] = ".".join(
-                str(int(getattr(version, field, 0)))
-                for field in ("flight_sw_major", "flight_sw_minor", "flight_sw_patch")
-            )
-            identity["firmware_git_hash"] = str(
-                getattr(version, "flight_sw_git_hash", "") or ""
-            )
-        if identification is not None:
-            identity["hardware_uid"] = str(
-                getattr(identification, "hardware_uid", "") or ""
-            )
-            identity["legacy_uid"] = str(
-                getattr(identification, "legacy_uid", "") or ""
-            )
-        if product is not None:
-            identity["vendor_name"] = str(
-                getattr(product, "vendor_name", "") or ""
-            )
-            identity["product_name"] = str(
-                getattr(product, "product_name", "") or ""
-            )
-            identity["vendor_id"] = int(getattr(product, "vendor_id", 0) or 0)
-            identity["product_id"] = int(getattr(product, "product_id", 0) or 0)
-        return identity
-
     def arm(self, force: bool = False) -> None:
         """向 PX4 发送解锁命令。
 
@@ -213,14 +222,576 @@ class MavsdkClient:
             logger.debug("PX4 使用飞控现有起飞高度发送命令，不覆盖高度参数")
         await system.action.takeoff()
 
+    def execute_takeoff(
+        self,
+        options: TakeoffOptions,
+        *,
+        progress_callback: Optional[TakeoffProgressCallback] = None,
+        cancellation_check: Optional[Callable[[], None]] = None,
+    ) -> TakeoffStatus:
+        """自动选择 PX4 起飞链路并等待物理高度确认。
+
+        ``options`` 使用跨厂商高度、速度、超时和安全边界；方法依据最新遥测自动选择飞控原生
+        起飞或本地位置闭环，不接受调用方指定 MAVSDK/Offboard 策略。``progress_callback`` 接收
+        不可变状态快照，``cancellation_check`` 可抛出取消异常。成功返回 ``COMPLETED`` 状态；
+        全球位置与 Home 可用时完成后交接到飞控 Hold，仅有本地定位时保持 Offboard 位置控制；
+        失败前若已可能离地会优先请求 Land，绝不直接在空中上锁。
+        """
+        return self._run(self._execute_takeoff(options, progress_callback, cancellation_check))
+
+    async def _execute_takeoff(
+        self,
+        options: TakeoffOptions,
+        progress_callback: Optional[TakeoffProgressCallback],
+        cancellation_check: Optional[Callable[[], None]],
+    ) -> TakeoffStatus:
+        execution_id = str(uuid4())
+        status = TakeoffStatus(
+            execution_id=execution_id,
+            state=TakeoffExecutionState.PRECHECKING,
+            target_altitude_m=options.target_altitude_m,
+        )
+
+        def publish(**changes: object) -> None:
+            nonlocal status
+            status = status.changed(**changes)
+            if progress_callback is not None:
+                progress_callback(status)
+
+        publish(reason="正在评估飞控原生起飞与本地位置闭环条件。")
+        deadline = time.monotonic() + options.timeout_s
+        await self._wait_for_takeoff_telemetry(deadline, options, cancellation_check)
+        method = self._resolve_takeoff_method(options)
+        if method is TakeoffMethod.AUTOPILOT and not self._global_hold_is_available(
+            options.telemetry_max_age_s
+        ):
+            raise RuntimeError(
+                "TAKEOFF_STRATEGY_UNAVAILABLE: native takeoff requires fresh global position and health, "
+                "plus a valid Home reference."
+            )
+        publish(
+            state=TakeoffExecutionState.STARTING,
+            method=method,
+            reason=(
+                "本地位置遥测新鲜且健康，使用有界本地位置闭环。"
+                if method is TakeoffMethod.LOCAL_POSITION
+                else "本地位置闭环条件不足，使用飞控原生起飞。"
+            ),
+        )
+        try:
+            if method is TakeoffMethod.LOCAL_POSITION:
+                await self._execute_local_position_takeoff(
+                    options,
+                    deadline=deadline,
+                    publish=publish,
+                    cancellation_check=cancellation_check,
+                )
+            else:
+                method = await self._execute_native_takeoff(
+                    options,
+                    deadline=deadline,
+                    publish=publish,
+                    cancellation_check=cancellation_check,
+                )
+            publish(
+                state=TakeoffExecutionState.HOLDING,
+                method=method,
+                progress=1.0,
+                reason="目标高度已确认，正在根据定位能力选择保持方式。",
+            )
+            completion_reason = await self._complete_takeoff_handoff(
+                self._require_system(),
+                method=method,
+                health_max_age_s=options.telemetry_max_age_s,
+            )
+            publish(
+                state=TakeoffExecutionState.COMPLETED,
+                method=method,
+                progress=1.0,
+                reason=completion_reason,
+            )
+            return status
+        except BaseException as exc:
+            publish(state=TakeoffExecutionState.ABORTED, reason=str(exc))
+            await self._safe_abort_takeoff()
+            raise
+
+    async def _wait_for_takeoff_telemetry(
+        self,
+        deadline: float,
+        options: TakeoffOptions,
+        cancellation_check: Optional[Callable[[], None]],
+    ) -> None:
+        while time.monotonic() < deadline:
+            if cancellation_check is not None:
+                cancellation_check()
+            status = self.get_status()
+            health = status.get("health", {})
+            battery = status.get("battery", {})
+            common_telemetry_is_fresh = all(
+                self._stream_is_fresh(stream_name, options.telemetry_max_age_s)
+                for stream_name in ("attitude", "battery", "health")
+            )
+            if common_telemetry_is_fresh and status.get("attitude") and battery and health and (
+                self._local_position_is_ready(options)
+                or (
+                    status.get("relative_altitude_m") is not None
+                    and self._stream_is_fresh("position", options.telemetry_max_age_s)
+                )
+            ):
+                remaining = battery.get("remaining_fraction")
+                if remaining is not None and float(remaining) < options.min_battery_fraction:
+                    raise RuntimeError("TAKEOFF_PRECHECK_FAILED: battery is below the configured minimum.")
+                if health.get("is_armable") is False and not self._local_position_is_ready(options):
+                    raise RuntimeError("TAKEOFF_PRECHECK_FAILED: flight controller reports not armable.")
+                return
+            await asyncio.sleep(0.1)
+        raise TimeoutError("TAKEOFF_TELEMETRY_STALE: required takeoff telemetry did not become ready.")
+
+    def _resolve_takeoff_method(self, options: TakeoffOptions) -> TakeoffMethod:
+        return (
+            TakeoffMethod.LOCAL_POSITION
+            if self._local_position_is_ready(options)
+            else TakeoffMethod.AUTOPILOT
+        )
+
+    def _local_position_is_ready(self, options: TakeoffOptions) -> bool:
+        return self._local_position_control_is_ready(options.telemetry_max_age_s)
+
+    def _local_position_control_is_ready(self, max_age_s: float = 5.0) -> bool:
+        with self._status_lock:
+            local = self._latest_status.get("local_position")
+            health = self._latest_status.get("health", {})
+            attitude = self._latest_status.get("attitude")
+        return bool(
+            isinstance(local, Mapping)
+            and local.get("position_m")
+            and isinstance(attitude, Mapping)
+            and all(
+                self._stream_is_fresh(stream_name, max_age_s)
+                for stream_name in ("local_position", "attitude", "health")
+            )
+            and health.get("is_local_position_ok") is True
+        )
+
+    def _stream_is_fresh(self, stream_name: str, max_age_s: float) -> bool:
+        with self._status_lock:
+            updated_at = self._status_updated_at.get(stream_name)
+        return updated_at is not None and time.monotonic() - updated_at <= max_age_s
+
+    async def _execute_native_takeoff(
+        self,
+        options: TakeoffOptions,
+        *,
+        deadline: float,
+        publish: Callable[..., None],
+        cancellation_check: Optional[Callable[[], None]],
+    ) -> TakeoffMethod:
+        system = self._require_system()
+        if not self.get_status().get("armed", {}).get("armed", False):
+            await system.action.arm()
+        await system.action.set_takeoff_altitude(options.target_altitude_m)
+        baseline = float(self.get_status().get("relative_altitude_m") or 0.0)
+        await system.action.takeoff()
+        progress_deadline = min(deadline, time.monotonic() + options.native_progress_timeout_s)
+        while time.monotonic() < deadline:
+            if cancellation_check is not None:
+                cancellation_check()
+            current = self.get_status()
+            if not self._stream_is_fresh("position", options.telemetry_max_age_s):
+                raise RuntimeError("TAKEOFF_TELEMETRY_STALE: relative altitude is stale.")
+            altitude = current.get("relative_altitude_m")
+            measured = float(altitude) - baseline if altitude is not None else None
+            if measured is not None:
+                progress = min(1.0, max(0.0, measured / options.target_altitude_m))
+                publish(
+                    state=TakeoffExecutionState.ASCENDING,
+                    current_altitude_m=measured,
+                    progress=progress,
+                )
+                if measured >= options.target_altitude_m - options.altitude_tolerance_m:
+                    return TakeoffMethod.AUTOPILOT
+            if time.monotonic() >= progress_deadline:
+                in_air = bool(current.get("in_air", {}).get("in_air", False))
+                if (measured is None or measured < options.altitude_tolerance_m) and not in_air:
+                    if self._local_position_is_ready(options):
+                        logger.debug("PX4 原生起飞无物理进展，离地前自动切换本地位置闭环")
+                        await self._execute_local_position_takeoff(
+                            options,
+                            deadline=deadline,
+                            publish=publish,
+                            cancellation_check=cancellation_check,
+                            already_armed=True,
+                        )
+                        return TakeoffMethod.LOCAL_POSITION
+                    raise RuntimeError("TAKEOFF_NO_PROGRESS: native takeoff produced no physical progress.")
+                progress_deadline = deadline
+            await asyncio.sleep(0.1)
+        raise TimeoutError("TAKEOFF_ASCENT_TIMEOUT: target altitude was not reached.")
+
+    async def _execute_local_position_takeoff(
+        self,
+        options: TakeoffOptions,
+        *,
+        deadline: float,
+        publish: Callable[..., None],
+        cancellation_check: Optional[Callable[[], None]],
+        already_armed: bool = False,
+    ) -> None:
+        from mavsdk.offboard import PositionNedYaw
+
+        system = self._require_system()
+        current = self.get_status()
+        local = current["local_position"]["position_m"]
+        ground_north_m = float(local["x"])
+        ground_east_m = float(local["y"])
+        ground_down_m = float(local["z"])
+        yaw_deg = float(current.get("attitude", {}).get("yaw_deg", 0.0))
+        interval_s = 1.0 / options.control_rate_hz
+        raw_mode = False
+
+        async def send(height_m: float) -> None:
+            if raw_mode:
+                await self._send_raw_local_position_setpoint(
+                    ground_north_m,
+                    ground_east_m,
+                    ground_down_m - height_m,
+                    yaw_deg,
+                )
+            else:
+                await system.offboard.set_position_ned(
+                    PositionNedYaw(
+                        ground_north_m,
+                        ground_east_m,
+                        ground_down_m - height_m,
+                        yaw_deg,
+                    )
+                )
+
+        prestream_deadline = min(deadline, time.monotonic() + 1.0)
+        while time.monotonic() < prestream_deadline:
+            if cancellation_check is not None:
+                cancellation_check()
+            await send(0.0)
+            await asyncio.sleep(interval_s)
+        try:
+            await system.offboard.start()
+            self._offboard_started = True
+        except Exception as exc:
+            logger.debug("PX4 MAVSDK Offboard 启动失败，尝试有界原始 MAVLink 兼容路径", exc_info=True)
+            raw_mode = True
+            await self._start_raw_offboard_fallback(
+                ground_north_m,
+                ground_east_m,
+                ground_down_m,
+                yaw_deg,
+                interval_s,
+                min(deadline, time.monotonic() + 10.0),
+                cancellation_check,
+            )
+            self._offboard_started = False
+            if time.monotonic() >= deadline:
+                raise RuntimeError("TAKEOFF_OFFBOARD_REJECTED: local control did not start.") from exc
+
+        telemetry_armed = bool(current.get("armed", {}).get("armed", False))
+        arm_task = None if already_armed or telemetry_armed else asyncio.create_task(system.action.arm())
+        started = time.monotonic()
+        try:
+            while time.monotonic() < deadline:
+                if cancellation_check is not None:
+                    cancellation_check()
+                elapsed = time.monotonic() - started
+                commanded_height = min(options.target_altitude_m, elapsed * options.climb_speed_m_s)
+                await send(commanded_height)
+                measured = self._validate_local_takeoff_safety(
+                    options,
+                    ground_north_m,
+                    ground_east_m,
+                    ground_down_m,
+                )
+                publish(
+                    state=TakeoffExecutionState.ASCENDING,
+                    method=TakeoffMethod.LOCAL_POSITION,
+                    current_altitude_m=measured,
+                    progress=min(1.0, max(0.0, measured / options.target_altitude_m)),
+                )
+                if arm_task is not None and arm_task.done():
+                    arm_task.result()
+                if measured >= options.target_altitude_m - options.altitude_tolerance_m:
+                    if arm_task is not None:
+                        await arm_task
+                    return
+                await asyncio.sleep(interval_s)
+        finally:
+            if arm_task is not None and not arm_task.done():
+                arm_task.cancel()
+                await asyncio.gather(arm_task, return_exceptions=True)
+        raise TimeoutError("TAKEOFF_ASCENT_TIMEOUT: local position target was not reached.")
+
+    def _validate_local_takeoff_safety(
+        self,
+        options: TakeoffOptions,
+        ground_north_m: float,
+        ground_east_m: float,
+        ground_down_m: float,
+    ) -> float:
+        current = self.get_status()
+        stale_streams = tuple(
+            stream_name
+            for stream_name in ("local_position", "attitude")
+            if not self._stream_is_fresh(stream_name, options.telemetry_max_age_s)
+        )
+        if stale_streams:
+            logger.debug(
+                "PX4 本地起飞控制遥测过期: streams=%s max_age_s=%.2f",
+                ",".join(stale_streams),
+                options.telemetry_max_age_s,
+            )
+            raise RuntimeError(
+                f"TAKEOFF_TELEMETRY_STALE: stale control telemetry: {', '.join(stale_streams)}."
+            )
+        if not self._stream_is_fresh("battery", options.battery_telemetry_max_age_s):
+            logger.debug(
+                "PX4 本地起飞电池监督遥测过期: max_age_s=%.2f",
+                options.battery_telemetry_max_age_s,
+            )
+            raise RuntimeError("TAKEOFF_TELEMETRY_STALE: stale supervisory telemetry: battery.")
+        local = current.get("local_position", {}).get("position_m", {})
+        north_m = float(local["x"])
+        east_m = float(local["y"])
+        down_m = float(local["z"])
+        height_m = ground_down_m - down_m
+        if math.hypot(north_m - ground_north_m, east_m - ground_east_m) > options.max_horizontal_deviation_m:
+            raise RuntimeError("TAKEOFF_POSITION_LIMIT: horizontal deviation exceeded the safety boundary.")
+        attitude = current.get("attitude", {})
+        if max(abs(float(attitude.get("roll_deg", 0.0))), abs(float(attitude.get("pitch_deg", 0.0)))) > options.max_tilt_deg:
+            raise RuntimeError("TAKEOFF_TILT_LIMIT: vehicle tilt exceeded the safety boundary.")
+        remaining = current.get("battery", {}).get("remaining_fraction")
+        if remaining is not None and float(remaining) < options.min_battery_fraction:
+            raise RuntimeError("TAKEOFF_PRECHECK_FAILED: battery fell below the configured minimum.")
+        if height_m > options.target_altitude_m + max(options.altitude_tolerance_m, 0.25):
+            raise RuntimeError("TAKEOFF_POSITION_LIMIT: measured height exceeded the target boundary.")
+        return height_m
+
+    async def _start_raw_offboard_fallback(
+        self,
+        north_m: float,
+        east_m: float,
+        down_m: float,
+        yaw_deg: float,
+        interval_s: float,
+        deadline: float,
+        cancellation_check: Optional[Callable[[], None]],
+    ) -> None:
+        from mavsdk.mavlink_direct import MavlinkMessage
+
+        system = self._require_system()
+        direct = getattr(system, "mavlink_direct", None)
+        if direct is None:
+            raise RuntimeError("TAKEOFF_OFFBOARD_REJECTED: raw MAVLink compatibility is unavailable.")
+        next_mode_request = 0.0
+        while time.monotonic() < deadline:
+            if cancellation_check is not None:
+                cancellation_check()
+            await self._send_raw_local_position_setpoint(north_m, east_m, down_m, yaw_deg)
+            now = time.monotonic()
+            if now >= next_mode_request:
+                await self._send_raw_offboard_mode_request(MavlinkMessage)
+                next_mode_request = now + 0.8
+            mode = str(self.get_status().get("flight_mode", {}).get("flight_mode", "")).lower()
+            if "offboard" in mode:
+                return
+            await asyncio.sleep(interval_s)
+        raise TimeoutError("TAKEOFF_OFFBOARD_REJECTED: raw compatibility mode was not confirmed.")
+
+    async def _send_raw_local_position_setpoint(
+        self,
+        north_m: float,
+        east_m: float,
+        down_m: float,
+        yaw_deg: float,
+    ) -> None:
+        from mavsdk.mavlink_direct import MavlinkMessage
+
+        fields = {
+            "time_boot_ms": int(time.monotonic() * 1000.0) & 0xFFFFFFFF,
+            "target_system": self.target_system_id,
+            "target_component": self.target_component_id,
+            "coordinate_frame": 1,
+            "type_mask": 2552,
+            "x": north_m,
+            "y": east_m,
+            "z": down_m,
+            "vx": 0.0,
+            "vy": 0.0,
+            "vz": 0.0,
+            "afx": 0.0,
+            "afy": 0.0,
+            "afz": 0.0,
+            "yaw": math.radians(yaw_deg),
+            "yaw_rate": 0.0,
+        }
+        await self._require_system().mavlink_direct.send_message(MavlinkMessage(
+            "SET_POSITION_TARGET_LOCAL_NED",
+            self.sender_system_id,
+            self.sender_component_id,
+            self.target_system_id,
+            self.target_component_id,
+            json.dumps(fields, separators=(",", ":")),
+        ))
+
+    async def _send_raw_offboard_mode_request(self, message_type: Any) -> None:
+        direct = self._require_system().mavlink_direct
+        command = {
+            "target_system": self.target_system_id,
+            "target_component": self.target_component_id,
+            "command": 176,
+            "confirmation": 0,
+            "param1": 1.0,
+            "param2": 6.0,
+            "param3": 0.0,
+            "param4": 0.0,
+            "param5": 0.0,
+            "param6": 0.0,
+            "param7": 0.0,
+        }
+        await direct.send_message(message_type(
+            "COMMAND_LONG",
+            self.sender_system_id,
+            self.sender_component_id,
+            self.target_system_id,
+            self.target_component_id,
+            json.dumps(command, separators=(",", ":")),
+        ))
+        set_mode = {
+            "target_system": self.target_system_id,
+            "base_mode": 1,
+            "custom_mode": 6 << 16,
+        }
+        await direct.send_message(message_type(
+            "SET_MODE",
+            self.sender_system_id,
+            self.sender_component_id,
+            self.target_system_id,
+            0,
+            json.dumps(set_mode, separators=(",", ":")),
+        ))
+
+    async def _safe_abort_takeoff(self) -> None:
+        system = self._require_system()
+        current = self.get_status()
+        armed = current.get("armed", {}).get("armed")
+        in_air = current.get("in_air", {}).get("in_air")
+        if armed is True or in_air is True:
+            try:
+                await self._land()
+            except Exception:
+                logger.debug("起飞中止后的自动 Land 请求失败", exc_info=True)
+            return
+        try:
+            await self._stop_offboard_if_started(system)
+        except Exception:
+            logger.debug("起飞中止时停止 Offboard 失败", exc_info=True)
+
+    async def _complete_takeoff_handoff(
+        self,
+        system: Any,
+        *,
+        method: TakeoffMethod,
+        health_max_age_s: float,
+    ) -> str:
+        if self._global_hold_is_available(health_max_age_s):
+            if self._offboard_started:
+                await self._stop_offboard_if_started(system)
+            else:
+                await system.action.hold()
+            logger.debug("PX4 起飞完成后使用全球定位 Hold 交接: method=%s", method.value)
+            return "目标高度已确认；全球位置和 Home 可用，已交接给飞控 Hold。"
+
+        if method is TakeoffMethod.LOCAL_POSITION and self._offboard_started:
+            logger.debug("PX4 起飞完成后保持本地 Offboard 位置目标，跳过无 GPS 条件下的 Hold 交接")
+            return "目标高度已确认；当前仅本地定位可用，继续由 Offboard 保持位置。"
+
+        raise RuntimeError(
+            "TAKEOFF_HOLD_UNAVAILABLE: neither global Hold nor an active local Offboard controller is available."
+        )
+
+    def _global_hold_is_available(self, max_age_s: float = 5.0) -> bool:
+        if not all(
+            self._stream_is_fresh(stream_name, max_age_s)
+            for stream_name in ("position", "health")
+        ):
+            return False
+        with self._status_lock:
+            health = self._latest_status.get("health", {})
+            position = self._latest_status.get("position", {})
+            home = self._latest_status.get("home", {})
+        return bool(
+            isinstance(health, Mapping)
+            and health.get("is_global_position_ok") is True
+            and health.get("is_home_position_ok") is True
+            and isinstance(position, Mapping)
+            and position.get("latitude_deg") is not None
+            and position.get("longitude_deg") is not None
+            and isinstance(home, Mapping)
+            and (
+                home.get("absolute_altitude_m") is not None
+                or (home.get("latitude_deg") is not None and home.get("longitude_deg") is not None)
+            )
+        )
+
     def land(self) -> None:
-        """停止已启动的 Offboard 控制并同步发送降落命令；成功时无返回值。"""
+        """根据定位能力退出本地控制并同步发送降落命令。
+
+        全球位置与 Home 可用时先正常退出 Offboard；仅有光流等本地定位时跳过会触发 Hold 的
+        ``offboard.stop()``，直接请求 PX4 Land。命令被飞控接受时无返回值，底层拒绝或链路异常时
+        抛出异常。
+        """
         self._run(self._land())
 
     async def _land(self) -> None:
         system = self._require_system()
-        await self._stop_offboard_if_started(system)
-        await system.action.land()
+        if self._offboard_started and self._global_hold_is_available():
+            await self._stop_offboard_if_started(system)
+        elif self._offboard_started:
+            logger.debug("PX4 仅本地定位可用，跳过 Offboard Stop 并直接请求 Land")
+        try:
+            await system.action.land()
+        except Exception:
+            logger.debug("PX4 MAVSDK Land 请求失败，尝试一次原始 MAVLink NAV_LAND", exc_info=True)
+            await self._send_raw_land()
+        self._offboard_started = False
+
+    async def _send_raw_land(self) -> None:
+        """通过动态系统/组件 ID 补发一次 MAVLink NAV_LAND；仅作为 Action Land 的有限回退。"""
+        try:
+            from mavsdk.mavlink_direct import MavlinkMessage
+        except ImportError as exc:
+            raise RuntimeError("LANDING_REJECTED: raw MAVLink compatibility is unavailable.") from exc
+        direct = getattr(self._require_system(), "mavlink_direct", None)
+        if direct is None:
+            raise RuntimeError("LANDING_REJECTED: raw MAVLink compatibility is unavailable.")
+        fields = {
+            "target_system": self.target_system_id,
+            "target_component": self.target_component_id,
+            "command": 21,
+            "confirmation": 0,
+            "param1": 0.0,
+            "param2": 0.0,
+            "param3": 0.0,
+            "param4": None,
+            "param5": None,
+            "param6": None,
+            "param7": None,
+        }
+        await direct.send_message(MavlinkMessage(
+            "COMMAND_LONG",
+            self.sender_system_id,
+            self.sender_component_id,
+            self.target_system_id,
+            self.target_component_id,
+            json.dumps(fields, separators=(",", ":")),
+        ))
 
     def return_to_launch(self) -> None:
         """停止 Offboard 并发送返航命令；目标由 PX4 Home 点决定，成功时无返回值。"""
@@ -232,13 +803,63 @@ class MavsdkClient:
         await system.action.return_to_launch()
 
     def hold(self) -> None:
-        """停止 Offboard 控制并同步请求 PX4 保持当前位置；成功时无返回值。"""
+        """根据当前定位链路同步保持无人机位置；成功时无返回值。
+
+        全球位置和 Home 健康时退出 Offboard 并使用 PX4 原生 Hold；仅本地位置健康时保持或
+        启动 Offboard，并锁定最新 Local NED 位置和偏航角。两条安全链路都不可用时抛出
+        ``FleetDockError``，不会盲目切换飞行模式。
+        """
         self._run(self._hold())
 
     async def _hold(self) -> None:
         system = self._require_system()
-        await self._stop_offboard_if_started(system)
-        await system.action.hold()
+        if self._global_hold_is_available():
+            try:
+                offboard_was_started = self._offboard_started
+                await self._stop_offboard_if_started(system)
+                if not offboard_was_started:
+                    await system.action.hold()
+            except Exception as exc:
+                logger.debug("PX4 全球定位 Hold 请求失败", exc_info=True)
+                raise FleetDockError(
+                    ErrorCode.HOLD_STRATEGY_UNAVAILABLE,
+                    "PX4 未能进入全球定位 Hold。",
+                ) from exc
+            logger.debug("PX4 使用全球定位原生 Hold")
+            return
+        if not self._local_position_control_is_ready():
+            raise FleetDockError(
+                ErrorCode.HOLD_STRATEGY_UNAVAILABLE,
+                "当前没有可用于安全悬停的健康本地定位链路或全球定位/Home 链路。",
+            )
+
+        from mavsdk.offboard import PositionNedYaw
+
+        current = self.get_status()
+        local = current["local_position"]["position_m"]
+        yaw_deg = float(current.get("attitude", {}).get("yaw_deg", 0.0))
+        target = PositionNedYaw(
+            float(local["x"]),
+            float(local["y"]),
+            float(local["z"]),
+            yaw_deg,
+        )
+        try:
+            if not self._offboard_started:
+                for _ in range(10):
+                    await system.offboard.set_position_ned(target)
+                    await asyncio.sleep(0.1)
+                await system.offboard.start()
+                self._offboard_started = True
+            else:
+                await system.offboard.set_position_ned(target)
+        except Exception as exc:
+            logger.debug("PX4 本地 Offboard 位置保持失败", exc_info=True)
+            raise FleetDockError(
+                ErrorCode.HOLD_STRATEGY_UNAVAILABLE,
+                "PX4 未能建立本地 Offboard 位置保持。",
+            ) from exc
+        logger.debug("PX4 使用本地 Offboard 位置保持")
 
     def goto_location(self, latitude_deg: float, longitude_deg: float, altitude_m: float, yaw_deg: float) -> None:
         """同步发送全球坐标导航目标。
@@ -588,24 +1209,69 @@ class MavsdkClient:
         """返回当前连接、Offboard 和最新遥测状态快照；返回字典与内部缓存相互独立。"""
         with self._status_lock:
             telemetry = dict(self._latest_status)
+            updated_at = dict(self._status_updated_at)
         return {
             "endpoint": self.endpoint,
             "is_connected": self._connected,
             "offboard_started": self._offboard_started,
+            "telemetry_updated_at_s": updated_at,
             **telemetry,
         }
 
     def start_telemetry(self, callback: Callable[[str, Mapping[str, Any], Any], None]) -> None:
         """启动后台遥测消费任务。
 
-        ``callback`` 在事件循环线程中接收流名称、可序列化标准字段和 MAVSDK 原生对象；
-        已启动时不重复创建任务。该方法立即返回，资源须通过 ``stop_telemetry`` 或 ``close`` 释放。
+        ``callback`` 在独立的有序分发线程中接收流名称、可序列化标准字段和 MAVSDK 原生对象。
+        连接后只常驻电池、解锁、空中、着陆、模式和健康等低带宽安全状态；位置、速度、姿态和
+        Home 由任务、事件或状态会话通过 ``acquire_telemetry()`` 按需启停。同一路原生流会在多个
+        使用者之间复用。接收协程先覆盖最新状态，再把通知交给有界队列；过载时丢弃最旧通知，
+        不积压历史状态。已启动时不重复创建任务；方法无返回值，资源须通过 ``stop_telemetry`` 或
+        ``close`` 释放。
         """
         if self._telemetry_future is not None and not self._telemetry_future.done():
             return
+        self._telemetry_callback = callback
+        with self._telemetry_demand_lock:
+            self._telemetry_demands["baseline"] = self._BASELINE_TELEMETRY_STREAMS
         loop = self._ensure_event_loop()
-        self._telemetry_future = asyncio.run_coroutine_threadsafe(self._monitor_telemetry(callback), loop)
+        self._telemetry_future = asyncio.run_coroutine_threadsafe(self._run_telemetry(callback), loop)
         logger.debug("PX4 后台遥测订阅已启动")
+
+    def acquire_telemetry(
+        self,
+        stream_names: tuple[str, ...] | frozenset[str] | set[str],
+        *,
+        owner: str = "consumer",
+    ) -> Callable[[], None]:
+        """申请一组 PX4 控制遥测并返回幂等释放函数。
+
+        ``stream_names`` 使用 FleetDock 内部标准流名；多个任务、事件订阅和 WS 会话申请同一路时只
+        建立一个 MAVSDK 原生订阅。``owner`` 仅用于 DEBUG 诊断，不得包含凭据。申请可以发生在连接
+        前，遥测启动后会自动生效；释放最后一个需求后停止非基础流。调用者必须在 ``finally`` 中
+        执行返回函数，业务 Demo 不需要直接使用本内部能力。
+        """
+        selected = frozenset(str(name) for name in stream_names)
+        unknown = selected - self._TELEMETRY_STREAMS
+        if unknown:
+            raise LookupError(f"Unknown PX4 telemetry streams: {', '.join(sorted(unknown))}")
+        token = f"{owner}:{uuid4().hex}"
+        with self._telemetry_demand_lock:
+            self._telemetry_demands[token] = selected
+        self._schedule_telemetry_reconcile()
+        logger.debug("PX4 遥测需求已申请: owner=%s streams=%s", owner, ",".join(sorted(selected)))
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            with self._telemetry_demand_lock:
+                self._telemetry_demands.pop(token, None)
+            self._schedule_telemetry_reconcile()
+            logger.debug("PX4 遥测需求已释放: owner=%s streams=%s", owner, ",".join(sorted(selected)))
+
+        return release
 
     def available_sensor_streams(self) -> tuple[str, ...]:
         """返回当前 MAVSDK 版本可用于标准传感器转换的 PX4 流名称。
@@ -739,27 +1405,168 @@ class MavsdkClient:
         except Exception:
             logger.debug("PX4 传感器流异常: stream=%s", stream_name, exc_info=True)
 
-    async def _monitor_telemetry(self, callback: Callable[[str, Mapping[str, Any], Any], None]) -> None:
-        telemetry = self._require_system().telemetry
-        consumers = (
-            self._consume_telemetry("position", telemetry.position, callback, self._map_position),
-            self._consume_telemetry(
-                "local_position",
-                telemetry.position_velocity_ned,
-                callback,
-                self._map_position_velocity_ned,
-            ),
-            self._consume_telemetry("home", telemetry.home, callback, self._map_home),
-            self._consume_telemetry("velocity_ned", telemetry.velocity_ned, callback, self._map_velocity_ned),
-            self._consume_telemetry("attitude", telemetry.attitude_euler, callback, self._map_attitude),
-            self._consume_telemetry("battery", telemetry.battery, callback, self._map_battery),
-            self._consume_telemetry("armed", telemetry.armed, callback, lambda value: {"armed": bool(value)}),
-            self._consume_telemetry("in_air", telemetry.in_air, callback, lambda value: {"in_air": bool(value)}),
-            self._consume_telemetry("landed_state", telemetry.landed_state, callback, self._map_landed_state),
-            self._consume_telemetry("flight_mode", telemetry.flight_mode, callback, self._map_flight_mode),
-            self._consume_telemetry("health", telemetry.health, callback, self._map_health),
+    async def _run_telemetry(self, callback: Callable[[str, Mapping[str, Any], Any], None]) -> None:
+        callback_queue: asyncio.Queue[tuple[str, Mapping[str, Any], Any]] = asyncio.Queue(maxsize=128)
+        self._telemetry_callback_queue = callback_queue
+        self._telemetry_dispatcher = asyncio.create_task(
+            self._dispatch_telemetry_callbacks(callback_queue, callback)
         )
-        await asyncio.gather(*consumers)
+        try:
+            await self._reconcile_telemetry_streams()
+            await asyncio.Future()
+        finally:
+            tasks = tuple(self._telemetry_tasks.values())
+            self._telemetry_tasks.clear()
+            handles = tuple(self._telemetry_release_handles.values())
+            self._telemetry_release_handles.clear()
+            for handle in handles:
+                handle.cancel()
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            dispatcher = self._telemetry_dispatcher
+            self._telemetry_dispatcher = None
+            self._telemetry_callback_queue = None
+            if dispatcher is not None:
+                dispatcher.cancel()
+                await asyncio.gather(dispatcher, return_exceptions=True)
+
+    def _schedule_telemetry_reconcile(self) -> None:
+        future = self._telemetry_future
+        loop = self._loop
+        if future is None or future.done() or loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(self._reconcile_telemetry_streams(), loop)
+
+    def _desired_telemetry_streams(self) -> frozenset[str]:
+        with self._telemetry_demand_lock:
+            return frozenset().union(*self._telemetry_demands.values()) if self._telemetry_demands else frozenset()
+
+    async def _reconcile_telemetry_streams(self) -> None:
+        desired = self._desired_telemetry_streams()
+        for stream_name in tuple(self._telemetry_tasks):
+            if stream_name not in desired:
+                if stream_name not in self._telemetry_release_handles:
+                    self._telemetry_release_handles[stream_name] = asyncio.get_running_loop().call_later(
+                        2.0,
+                        self._stop_telemetry_stream_if_unused,
+                        stream_name,
+                    )
+            else:
+                handle = self._telemetry_release_handles.pop(stream_name, None)
+                if handle is not None:
+                    handle.cancel()
+        queue = self._telemetry_callback_queue
+        if queue is None:
+            return
+        for stream_name in sorted(desired):
+            current = self._telemetry_tasks.get(stream_name)
+            if current is not None and not current.done():
+                continue
+            stream_factory, mapper, rate_setter, rate_hz = self._telemetry_stream_definition(stream_name)
+            task = asyncio.create_task(
+                self._consume_telemetry(
+                    stream_name,
+                    stream_factory,
+                    self._enqueue_telemetry_callback,
+                    mapper,
+                    rate_setter=rate_setter,
+                    rate_hz=rate_hz,
+                )
+            )
+            self._telemetry_tasks[stream_name] = task
+            logger.debug("PX4 按需遥测流已启动: stream=%s rate_hz=%s", stream_name, rate_hz)
+
+    def _stop_telemetry_stream_if_unused(self, stream_name: str) -> None:
+        self._telemetry_release_handles.pop(stream_name, None)
+        if stream_name in self._desired_telemetry_streams():
+            return
+        task = self._telemetry_tasks.pop(stream_name, None)
+        if task is not None:
+            task.cancel()
+            logger.debug("PX4 按需遥测流已停止: stream=%s", stream_name)
+
+    def _enqueue_telemetry_callback(
+        self,
+        stream_name: str,
+        data: Mapping[str, Any],
+        native_data: Any,
+    ) -> None:
+        callback_queue = self._telemetry_callback_queue
+        if callback_queue is None:
+            return
+        if callback_queue.full():
+            try:
+                callback_queue.get_nowait()
+                callback_queue.task_done()
+            except asyncio.QueueEmpty:
+                pass
+            self._telemetry_dropped_notifications += 1
+            logger.debug("PX4 遥测事件分发队列已满，丢弃最旧事件: limit=%d", callback_queue.maxsize)
+        callback_queue.put_nowait((stream_name, data, native_data))
+        self._telemetry_queue_high_watermark = max(
+            self._telemetry_queue_high_watermark,
+            callback_queue.qsize(),
+        )
+
+    def telemetry_diagnostics(self) -> Dict[str, Any]:
+        """返回按需遥测、分发积压和丢弃计数的可序列化诊断快照。
+
+        返回的流名称使用 FleetDock 内部标准名，不包含连接地址、凭据或 MAVSDK 原生对象；计数覆盖
+        当前客户端生命周期，可用于判断低带宽数传是否发生降频或消费者背压。
+        """
+        callback_queue = self._telemetry_callback_queue
+        return {
+            "link_profile": self.link_profile,
+            "requested_streams": tuple(sorted(self._desired_telemetry_streams())),
+            "active_streams": tuple(sorted(self._desired_telemetry_streams())) if self._telemetry_future is not None else (),
+            "callback_pending": callback_queue.qsize() if callback_queue is not None else 0,
+            "callback_capacity": callback_queue.maxsize if callback_queue is not None else 128,
+            "callback_high_watermark": self._telemetry_queue_high_watermark,
+            "dropped_notifications": self._telemetry_dropped_notifications,
+        }
+
+    def _telemetry_stream_definition(
+        self,
+        stream_name: str,
+    ) -> tuple[Callable[[], Any], Callable[[Any], Dict[str, Any]], Optional[Callable[[float], Any]], Optional[float]]:
+        telemetry = self._require_system().telemetry
+        definitions: Dict[str, tuple[str, Callable[[Any], Dict[str, Any]], Optional[str]]] = {
+            "position": ("position", self._map_position, "set_rate_position"),
+            "local_position": ("position_velocity_ned", self._map_position_velocity_ned, "set_rate_position_velocity_ned"),
+            "home": ("home", self._map_home, None),
+            "velocity_ned": ("velocity_ned", self._map_velocity_ned, "set_rate_velocity_ned"),
+            "attitude": ("attitude_euler", self._map_attitude, "set_rate_attitude_euler"),
+            "battery": ("battery", self._map_battery, "set_rate_battery"),
+            "armed": ("armed", lambda value: {"armed": bool(value)}, None),
+            "in_air": ("in_air", lambda value: {"in_air": bool(value)}, None),
+            "landed_state": ("landed_state", self._map_landed_state, None),
+            "flight_mode": ("flight_mode", self._map_flight_mode, None),
+            "health": ("health", self._map_health, None),
+        }
+        factory_name, mapper, setter_name = definitions[stream_name]
+        rate_setter = getattr(telemetry, setter_name, None) if setter_name is not None else None
+        rates = {
+            "simulation": {"position": 5.0, "local_position": 10.0, "velocity_ned": 10.0, "attitude": 10.0, "battery": 1.0},
+            "standard": {"position": 1.0, "local_position": 5.0, "velocity_ned": 5.0, "attitude": 5.0, "battery": 1.0},
+            "low_bandwidth": {"position": 0.5, "local_position": 2.0, "velocity_ned": 2.0, "attitude": 2.0, "battery": 0.2},
+        }
+        return getattr(telemetry, factory_name), mapper, rate_setter if callable(rate_setter) else None, rates[self.link_profile].get(stream_name)
+
+    @staticmethod
+    async def _dispatch_telemetry_callbacks(
+        callback_queue: asyncio.Queue[tuple[str, Mapping[str, Any], Any]],
+        callback: Callable[[str, Mapping[str, Any], Any], None],
+    ) -> None:
+        while True:
+            stream_name, data, native_data = await callback_queue.get()
+            try:
+                await asyncio.to_thread(callback, stream_name, data, native_data)
+            except Exception:
+                logger.debug("PX4 遥测事件分发失败: stream=%s", stream_name, exc_info=True)
+            finally:
+                callback_queue.task_done()
 
     async def _consume_telemetry(
         self,
@@ -767,12 +1574,32 @@ class MavsdkClient:
         stream_factory: Callable[[], Any],
         callback: Callable[[str, Mapping[str, Any], Any], None],
         mapper: Callable[[Any], Dict[str, Any]],
+        *,
+        rate_setter: Optional[Callable[[float], Any]] = None,
+        rate_hz: Optional[float] = None,
     ) -> None:
         try:
+            if rate_setter is not None and rate_hz is not None:
+                try:
+                    await rate_setter(rate_hz)
+                    logger.debug("PX4 控制遥测频率已请求: stream=%s rate_hz=%.1f", stream_name, rate_hz)
+                except Exception:
+                    logger.debug(
+                        "PX4 控制遥测频率请求失败，继续使用飞控默认频率: stream=%s rate_hz=%.1f",
+                        stream_name,
+                        rate_hz,
+                        exc_info=True,
+                    )
+                    callback(
+                        "telemetry_error",
+                        {"stream": stream_name, "error": "rate_configuration_failed"},
+                        None,
+                    )
             async for value in stream_factory():
                 data = mapper(value)
                 with self._status_lock:
                     self._latest_status[stream_name] = dict(data)
+                    self._status_updated_at[stream_name] = time.monotonic()
                     if stream_name == "position":
                         self._latest_status.update(data)
                 callback(stream_name, data, value)
@@ -802,7 +1629,7 @@ class MavsdkClient:
     @staticmethod
     def _map_position_velocity_ned(position_velocity: Any) -> Dict[str, Any]:
         position = position_velocity.position
-        return {
+        data = {
             "frame": CoordinateFrame.LOCAL_NED.value,
             "position_m": {
                 "x": float(position.north_m),
@@ -810,6 +1637,14 @@ class MavsdkClient:
                 "z": float(position.down_m),
             },
         }
+        velocity = getattr(position_velocity, "velocity", None)
+        if velocity is not None:
+            data["velocity_m_s"] = {
+                "x": float(velocity.north_m_s),
+                "y": float(velocity.east_m_s),
+                "z": float(velocity.down_m_s),
+            }
+        return data
 
     @staticmethod
     def _map_home(home: Any) -> Dict[str, Any]:
@@ -829,7 +1664,11 @@ class MavsdkClient:
 
     @staticmethod
     def _map_battery(battery: Any) -> Dict[str, Any]:
-        data = {"remaining_fraction": float(battery.remaining_percent)}
+        remaining_fraction = float(battery.remaining_percent)
+        # MAVSDK 的不同遥测来源可能返回 0~1 比例或 0~100 百分数，统一收敛为 FleetDock 的 0~1 契约。
+        if remaining_fraction > 1.0:
+            remaining_fraction /= 100.0
+        data = {"remaining_fraction": remaining_fraction}
         if getattr(battery, "voltage_v", None) is not None:
             data["voltage_v"] = float(battery.voltage_v)
         return data
@@ -861,6 +1700,9 @@ class MavsdkClient:
         """取消后台遥测任务并等待取消信号进入事件循环；可重复调用且无返回值。"""
         future = self._telemetry_future
         self._telemetry_future = None
+        self._telemetry_callback = None
+        with self._telemetry_demand_lock:
+            self._telemetry_demands.clear()
         if future is not None and not future.done():
             future.cancel()
             loop = self._loop
@@ -916,6 +1758,7 @@ class MavsdkClient:
             task.cancel()
         if pending_tasks:
             await asyncio.gather(*pending_tasks, return_exceptions=True)
+        await asyncio.get_running_loop().shutdown_default_executor()
         await asyncio.get_running_loop().shutdown_asyncgens()
         await asyncio.sleep(0)
 
@@ -955,7 +1798,22 @@ class MavsdkClient:
     def _run(self, coroutine: Any) -> Any:
         loop = self._ensure_event_loop()
         future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-        return future.result(timeout=self.timeout_s + 5.0)
+        command_timeout_s = getattr(self._command_context, "timeout_s", None)
+        wait_timeout_s = float(command_timeout_s) if command_timeout_s is not None else self.timeout_s + 5.0
+        try:
+            return future.result(timeout=wait_timeout_s)
+        except TimeoutError as exc:
+            if future.done():
+                raise
+            future.cancel()
+            # 让事件循环至少运行一轮以处理协程取消，避免客户端随后关闭时遗留 pending task。
+            cancellation_barrier = asyncio.run_coroutine_threadsafe(asyncio.sleep(0), loop)
+            try:
+                cancellation_barrier.result(timeout=min(wait_timeout_s, 1.0))
+            except BaseException:
+                logger.debug("PX4 超时协程取消确认未完成", exc_info=True)
+            logger.debug("PX4 标准命令等待超时: timeout_s=%.3f", wait_timeout_s)
+            raise TimeoutError(f"PX4 command did not finish within {wait_timeout_s:.3f} seconds.") from exc
 
     def _ensure_event_loop(self) -> asyncio.AbstractEventLoop:
         with self._loop_lock:

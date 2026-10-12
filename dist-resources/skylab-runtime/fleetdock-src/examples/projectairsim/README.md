@@ -5,8 +5,9 @@
 ## 机器人 Profile
 
 - `basic`：保留上游 PX4 机型的第三人称 `Chase` 观察相机、机载向下 `DownCamera` 和飞控传感器；标准 RGB 主相机不会在存在机载视角时选择 `Chase`。
-- `video`：增加一路 640×480、30 FPS 的前视 RGB 相机，保留仿真窗口使用的第三人称 `Chase` 视角，
-  仅关闭 `DownCamera`，用于低延迟控制器视频。
+- `video`：增加一路 960×540、30 FPS 的 16:9 前视 RGB 相机，保留仿真窗口使用的第三人称 `Chase`
+  视角，仅关闭 `DownCamera`，用于低延迟控制器视频。宽高比与控制器画面区一致，避免 4:3 画面缩小
+  后留黑边；媒体链路仍只保留最新一帧，不增加缓冲深度。
 - `depth`：在 `basic` 基础上增加 `FrontDepthCamera`，同时发布 640×480 RGB 和透视深度图。相机沿机体
   前向安装在 `x=0.45 m`，位于前桨盘最前缘之外，默认画面不会包含机身和螺旋桨。
 - `stereo`：在 `basic` 基础上增加 `StereoLeft` 和 `StereoRight`，双目基线为 0.12 米；两台相机同样
@@ -85,9 +86,14 @@ Linux Conda 环境还需按仓库主 README 安装 `gstreamer`、`gst-python`、
 GStreamer Server 并使用各自的 RTSP 路径；SDK 接收端使用 TCP、零延迟抖动缓冲和单帧 `appsink`，只
 交付最新解码帧。退出上下文时只注销本路流，最后一路关闭后才停止 Server。
 
-`drone_camera_debug.py` 和 `drone_controller_debug.py` 展示完整桥接生命周期。RTSP 只用于普通 RGB
-视频；深度、双目、点云和需要严格采集时间同步的数据继续使用标准强类型传感器后端，不压缩为普通
-H.264 视频。
+`examples/demo/drone_camera_debug.py` 展示 RTSP 与标准传感器订阅生命周期；
+`packages/fleetdock-server/examples/start_projectairsim_rtsp_bridge.bat` 只提供可交给通用无人机服务消费的 RTSP
+拉流地址，适合与 `packages/fleetdock-server/examples/start_drone_server.bat` 分进程组合；
+`packages/fleetdock-server/examples/projectairsim_bridge_server.py` 显式启动 Bridge 和独立
+`FleetDockServer`，`packages/fleetdock-server/examples/drone_controller_debug.py` 再作为普通 WS 客户端
+打开 Python 图形界面。RTSP 只负责普通 RGB 画面。
+未来 Web UI 使用相同 WS 协议，并由独立流媒体服务把 RTSP 转为 WebRTC。深度、双目、点云和需要严格
+采集时间同步的数据继续使用标准强类型传感器后端，不压缩为普通 H.264 视频。
 
 需要自定义视角时，可以复制对应机器人 Profile，并修改相机 `origin.xyz`、`origin.rpy-deg` 和
 `capture-settings[].fov-degrees`，再通过 `PROJECTAIRSIM_ROBOT_CONFIG_PATH` 使用自定义配置。`xyz` 使用

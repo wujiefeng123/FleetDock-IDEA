@@ -56,7 +56,6 @@ class SdkContractsTest(unittest.TestCase):
             self.assertTrue(drone.set_velocity(x=1.0, speed=0.0).ok)
 
     def test_command_observer_tracks_standard_command_lifecycle(self) -> None:
-        # [UAV-IDE MODIFY] Let the IDE debugger observe SDK commands without taking over the device link.
         observed = []
         with DeviceFactory.create().mock_drone().build() as drone:
             unsubscribe = drone.add_command_observer(

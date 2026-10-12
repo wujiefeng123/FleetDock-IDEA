@@ -222,7 +222,17 @@ PX4_EVENTS = frozenset(
         EventType.IN_AIR_CHANGED,
         EventType.LANDED_STATE_CHANGED,
         EventType.FLIGHT_MODE_CHANGED,
+        EventType.TAKEOFF_STARTED,
+        EventType.TAKEOFF_STRATEGY_SELECTED,
+        EventType.TAKEOFF_PROGRESS_UPDATED,
+        EventType.TAKEOFF_COMPLETED,
+        EventType.TAKEOFF_ABORTED,
     )
+)
+MOCK_DRONE_EVENTS = frozenset(
+    event
+    for event in PX4_EVENTS
+    if not event.startswith("aerial.takeoff.")
 )
 
 ROBOT_COMMANDS = _commands(
@@ -292,7 +302,7 @@ default_registry.register(
         supported_init_modes=_modes(InitMode.SDK_CREATE),
         supported_firmware=_firmware_map((FirmwareVersion.MOCK_V1, "FleetDock 内置模拟无人机适配器")),
         default_firmware=FirmwareVersion.MOCK_V1,
-        supported_events=PX4_EVENTS,
+        supported_events=MOCK_DRONE_EVENTS,
         extension_namespaces=frozenset({"mock"}),
         supported_move_targets=DRONE_MOVE_TARGETS,
     ),

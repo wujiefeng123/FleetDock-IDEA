@@ -356,7 +356,7 @@ class FollowExecutorDepthTests(unittest.TestCase):
         dog = RobotDog(
             ProductType.UNITREE_GO2,
             params={"network_interface": "mock0"},
-            metadata=DeviceMetadata(device_id=device_id),
+            metadata=DeviceMetadata(device_id=device_id, local_frame_id="dog-test-map"),
         )
         dog.connect()
         dog.stand()
@@ -406,6 +406,36 @@ class FollowExecutorDepthTests(unittest.TestCase):
             time.sleep(0.02)
             self.assertIn("leader", session.status().message)
             session.stop_execution(wait_s=1.0)
+        finally:
+            fleet.close()
+
+    def test_executor_holds_move_telemetry_until_stop(self) -> None:
+        leader = self.build_dog("lease-leader")
+        follower = self.build_dog("lease-follower")
+        leader.state._update(local_x_m=10.0, local_y_m=0.0)
+        follower.state._update(local_x_m=0.0, local_y_m=0.0)
+        acquired: list[str] = []
+        released: list[str] = []
+
+        def bind_lease(device: RobotDog, name: str) -> None:
+            def acquire(capability: CapabilityName):
+                self.assertIs(capability, CapabilityName.MOVE)
+                acquired.append(name)
+                return lambda: released.append(name)
+
+            device._acquire_capability_telemetry = acquire  # type: ignore[method-assign]
+
+        bind_lease(leader, "leader")
+        bind_lease(follower, "follower")
+        fleet = Fleet([leader, follower])
+        try:
+            session = fleet.follow(leader=leader, followers=[follower], policy=FollowPolicy.relative())
+            session.start(interval_s=0.005, stop_action=FollowStopAction.NONE)
+            time.sleep(0.01)
+            self.assertCountEqual(acquired, ["leader", "follower"])
+            self.assertEqual(released, [])
+            session.stop_execution(wait_s=1.0)
+            self.assertCountEqual(released, ["leader", "follower"])
         finally:
             fleet.close()
 

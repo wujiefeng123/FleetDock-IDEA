@@ -913,7 +913,7 @@ class ProjectAirSimSensorBackendTests(unittest.TestCase):
         primary = hub.get(SensorKind.RGB_CAMERA)
         self.assertEqual(primary.sensor_id, "FrontCamera")
         self.assertEqual(primary.frame, CoordinateFrame.BODY)
-        self.assertEqual((primary.camera_intrinsics.width_px, primary.camera_intrinsics.height_px), (640, 480))
+        self.assertEqual((primary.camera_intrinsics.width_px, primary.camera_intrinsics.height_px), (960, 540))
 
         hub.close()
 

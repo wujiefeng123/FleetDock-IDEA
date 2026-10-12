@@ -25,6 +25,7 @@ class ProjectAirSimProfileTests(unittest.TestCase):
         environment = {
             "PROJECTAIRSIM_EXAMPLES_DIR": str(examples_dir),
             "PROJECTAIRSIM_SRC_DIR": str(src_dir),
+            "PROJECTAIRSIM_SCENE_CONFIG_PATH": "",
             "PROJECTAIRSIM_SENSOR_PROFILES": "",
             "MULTI_PROJECTAIRSIM_SENSOR_PROFILES": "",
         }
@@ -55,6 +56,32 @@ class ProjectAirSimProfileTests(unittest.TestCase):
         (config_dir / "robot_quadrotor_px4_sitl_wsl2.jsonc").write_text(
             json.dumps(robot), encoding="utf-8"
         )
+
+    def test_scene_config_path_selects_default_or_custom_scene(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            module, _ = self.load_prepare_module(Path(temp_dir))
+            custom_scene_path = Path(temp_dir) / "custom_scene.jsonc"
+            custom_scene_path.write_text(
+                json.dumps({"id": "CustomScene", "actors": []}),
+                encoding="utf-8",
+            )
+
+            module.SCENE_CONFIG_PATH = ""
+            with patch.object(
+                module,
+                "load_jsonc",
+                return_value={"id": "DefaultScene", "actors": []},
+            ) as load_jsonc:
+                self.assertEqual("DefaultScene", module.load_scene_template()["id"])
+            load_jsonc.assert_called_once_with(
+                module.FLEETDOCK_PROJECTAIRSIM_DIR
+                / "scenes"
+                / "scene_px4_neighborhood.jsonc"
+            )
+
+            module.SCENE_CONFIG_PATH = str(custom_scene_path)
+            with patch.dict(sys.modules, {"commentjson": SimpleNamespace(load=json.load)}):
+                self.assertEqual("CustomScene", module.load_scene_template()["id"])
 
     def test_single_explicit_profiles_generate_stereo_and_lidar(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -122,7 +149,7 @@ class ProjectAirSimProfileTests(unittest.TestCase):
             front_camera = sensors_by_id["FrontCamera"]
             self.assertAlmostEqual(front_camera["capture-interval"], 1.0 / 30.0, places=8)
             self.assertEqual([0], [setting["image-type"] for setting in front_camera["capture-settings"]])
-            self.assertEqual((640, 480), (
+            self.assertEqual((960, 540), (
                 front_camera["capture-settings"][0]["width"],
                 front_camera["capture-settings"][0]["height"],
             ))

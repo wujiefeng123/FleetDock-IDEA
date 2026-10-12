@@ -9,9 +9,16 @@
 
 本文档用于约束 FleetDock 仓库中的自动化代理和协作者行为，确保源码、测试、示例和文档保持一致。
 
+## `setup-project-airsim-ue5` 技能使用边界
+
+- `setup-project-airsim-ue5` 仅用于在普通 Unreal Engine 项目中安装、配置或排查 Project AirSim 插件，不是 FleetDock 项目开发技能。
+- FleetDock SDK、适配器、仿真集成、启动脚本、场景配置、示例、测试、文档及其他仓库内开发任务均与该技能无关；处理这些任务时不得调用该技能，也不得读取、访问或参考其 `SKILL.md`、脚本和参考资料。
+- FleetDock 任务中出现 Project AirSim、AirSim、Unreal Engine、UE、PX4 或场景配置等关键词，不构成调用该技能的理由。
+- 只有用户明确要求使用 `setup-project-airsim-ue5`，或明确要求为 FleetDock 之外的普通 Unreal Engine 项目安装、配置、诊断 Project AirSim 插件时，才允许调用该技能。
+
 ## 项目实际情况
 
-FleetDock 当前是一个 Python SDK 骨架，核心目标是用统一设备对象控制不同类型的协同设备。现有公共入口在 `fleetdock/__init__.py`，主要模块包括：
+FleetDock 是一个单仓库、多发布包项目。核心目标是用统一设备对象控制不同类型的协同设备，并让本地应用与远程交互层复用同一套设备语义。仓库内发布包之间保持单向依赖：`fleetdock-server` 依赖 `fleetdock`，`fleetdock-js` 只依赖公开 WS 协议；核心 `fleetdock` 不得反向依赖服务端包。主要模块包括：
 
 - `fleetdock/models.py`：标准命令、连接信息、产品配置、响应和错误码。
 - `fleetdock/devices.py`：`BaseDevice`、`Drone`、`RobotDog` 等面向用户的标准设备对象。
@@ -21,6 +28,23 @@ FleetDock 当前是一个 Python SDK 骨架，核心目标是用统一设备对�
 - `fleetdock/events.py`：基础事件和消息总线能力。
 - `examples/`：可运行示例，用于展示标准 SDK 用法。
 - `tests/`：基于标准库 `unittest` 的测试。
+- `packages/fleetdock-server/`：独立发布的 Python WS 服务端、Python WS 客户端和图形控制器。
+- `packages/fleetdock-js/`：面向浏览器和 Node.js 的 TypeScript WS 客户端。
+- `protocol/`：与语言无关的 WS 协议、JSON Schema、AsyncAPI 描述和消息示例。
+
+## WS 服务与交互层规范
+
+- `fleetdock-server` 与核心 SDK 位于同一仓库但作为独立 Python 包发布和选择性安装；版本默认与核心 SDK 同步，协议版本独立演进。
+- 服务端持有或托管核心 `BaseDevice` 对象，对外只公开标准设备、命令、状态、传感器和手动控制语义，不暴露 MAVSDK、MAVLink、DJI、Unitree 或仿真器原生对象。
+- WS 固定使用同一监听端口下的 `/ws/control` 和 `/ws/telemetry` 路径。任何破坏兼容性的消息变更必须更新 `protocol/`、Python/TypeScript 客户端、测试和中文 README。
+- 图形界面和 Web UI 属于同级交互层。正式图形控制器必须通过 `FleetDockClient` 连接 WS，不得直接调用设备 SDK；核心 SDK 仍允许单机程序直接调用。
+- 正式服务启动命令按设备类别拆分，例如无人机使用 `fleetdock-server-drone`；不同类别可拥有独立初始化参数，但最终都必须注册标准 `BaseDevice` 并复用同一套 WS 协议。
+- 键盘层只把动作的按下、抬起及心跳传给服务端。动作集合、斜向归一化、互斥方向抵消、输入超时和最终速度命令由服务端控制会话处理；每台设备同时只允许一个控制租约。
+- 客户端断开、租约释放、输入超时或服务关闭时，服务端必须释放全部动作并关闭手动控制会话。传感器订阅也必须随连接清理。
+- RGB 视频不进入 FleetDock WS。真机或仿真继续通过 RTSP 传输，浏览器侧由独立流媒体服务转换为 WebRTC；WS 只传控制、状态和适合 JSON 交付的遥测/传感器数据。
+- RTSP 输入、WHIP/可选 RTSP 远端发布和 WHEP 播放属于独立媒体生命周期，不得与设备控制租约互相绑定。SRS 6 默认使用 WHIP 发布和 WHEP 播放，不得把未开放的 RTSP 端口描述为 SRS 发布入口；真正使用 RTSP 转推时，目标必须支持 `ANNOUNCE/RECORD`。H.264 RTSP 默认应通过进程内 GStreamer 无转码进入 WHIP，避免为了封装协议重复编码；FFmpeg 转码只作为输入不兼容时的显式回退。发布失败时必须释放 GStreamer 管线、监听线程及已创建的子进程，日志和状态不得泄漏用户名、密码、令牌或完整敏感 URI。
+- WebRTC 播放不得仅凭 HTTP/SDP 成功或远端轨道存在就宣告上线；只有浏览器收到首个可解码视频帧后才能显示在线。无流、空轨道、首帧超时和页面退出都必须关闭 PeerConnection，并在服务端提供会话地址时删除 WHEP 会话。
+- 当前服务默认只监听回环地址。对非本机开放前必须补齐 TLS、认证、授权、来源限制、速率限制和审计，不得把开发态端口描述为可直接公网部署。
 
 ## 产品级目标
 
@@ -43,6 +67,9 @@ FleetDock 当前是一个 Python SDK 骨架，核心目标是用统一设备对�
 - `px4`、`dji-cloud`、`unitree`、`projectairsim-rtsp`、`vision`、`dev` 等碎片化 extra 继续按各自能力维护；已实现的运行集成依赖必须同步维护到 `full-prod`，并确保 `full-dev` 始终完整包含 `full-prod` 与 `dev`，同时更新 README 和依赖聚合测试。`unitree` 在真实适配器和协议测试落地前保持显式 opt-in，不进入聚合安装组。
 - `integrations` 和 `integrations-lite` 作为兼容、轻量入口保留，不得替代新电脑完整安装所使用的 `full-prod` 和 `full-dev`。
 - 运行测试使用：`C:\ProgramData\anaconda3\envs\fleetdock\python.exe -m unittest discover -s tests`。
+- 服务端包开发安装使用：`C:\ProgramData\anaconda3\envs\fleetdock\python.exe -m pip install -e packages/fleetdock-server`。
+- 服务端测试使用：`C:\ProgramData\anaconda3\envs\fleetdock\python.exe -m unittest discover -s packages/fleetdock-server/tests`。
+- TypeScript 客户端测试使用：在 `packages/fleetdock-js` 下执行 `npm install` 和 `npm test`。
 - 如果用户终端已经显示 `(fleetdock)`，交互式命令可以直接使用 `python -m pip ...` 和 `python -m unittest ...`。
 
 ## 版本控制与迁移忽略规则

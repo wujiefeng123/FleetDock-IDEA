@@ -25,14 +25,19 @@ def resolve_profile_speed(
     remaining_m: float,
     dt_s: float,
     options: TaskOptions,
+    *,
+    position_tolerance_m: float | None = None,
 ) -> float:
     """按加减速约束计算下一控制周期速度。
 
     ``current_speed_m_s`` 是当前规划速度，``max_speed_m_s`` 是上限速度，单位均为米/秒；
-    ``remaining_m`` 单位为米，``dt_s`` 单位为秒；``options`` 提供加速度、减速度和位置容差。
-    返回值同时受最大速度、加速度、减速度和剩余制动距离约束，单位为米/秒。
+    ``remaining_m`` 是到当前控制目标的剩余距离，单位为米，``dt_s`` 单位为秒；``options``
+    提供加速度、减速度和默认位置容差。``position_tolerance_m`` 可传当前航点的实际接受半径，
+    未传时沿用计划默认位置容差。返回值同时受最大速度、加速度、减速度和剩余制动距离约束，
+    单位为米/秒。
     """
-    brake_remaining_m = max(remaining_m - options.position_tolerance_m * 0.5, 0.0)
+    tolerance_m = options.position_tolerance_m if position_tolerance_m is None else float(position_tolerance_m)
+    brake_remaining_m = max(remaining_m - tolerance_m * 0.5, 0.0)
     brake_limited_speed_m_s = math.sqrt(2.0 * options.deceleration_m_s2 * brake_remaining_m)
     target_speed_m_s = min(max_speed_m_s, brake_limited_speed_m_s)
     lower_speed_m_s = max(0.0, current_speed_m_s - options.deceleration_m_s2 * dt_s)

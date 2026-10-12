@@ -9,6 +9,8 @@ def error_code_from_exception(exc: Exception) -> ErrorCode:
     """读取 ``exc`` 携带的错误码并返回标准枚举；未知或非法错误码降级为 UNKNOWN_ERROR。"""
     if isinstance(exc, ValueError):
         return ErrorCode.VALIDATION_ERROR
+    if isinstance(exc, TimeoutError):
+        return ErrorCode.COMMAND_TIMEOUT
     code = getattr(exc, "code", ErrorCode.UNKNOWN_ERROR)
     return code if isinstance(code, ErrorCode) else ErrorCode.UNKNOWN_ERROR
 

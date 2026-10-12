@@ -1,4 +1,7 @@
-"""MAVSDK-Python 随机航线返航教学 Demo。
+"""MAVSDK-Python 随机航线返航底层对照脚本。
+
+该文件直接调用厂商 SDK，只用于协议调试和与 FleetDock 适配器比较，不是公共 SDK 用法示例；
+应用开发应优先复制 ``examples/demo/drone_plan.py``。
 
 流程：
 1. 连接 MAVSDK。

@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 import math
 import time
-from threading import Lock
+from contextlib import contextmanager, nullcontext
+from threading import Event, Lock
 from typing import Any, Callable, Dict, Mapping, Optional, cast
 
 from fleetdock.adapters.base import DeviceAdapter
+from fleetdock.adapters.control import ControlAuthority, ControlConflictError
 from fleetdock.adapters.px4_mavlink.client import MavsdkClient
 from fleetdock.adapters.px4_mavlink.sensors import _create_px4_integrated_sensor_backend
 from fleetdock.events import (
@@ -19,9 +21,17 @@ from fleetdock.events import (
     RouteCompletionReason,
     serialize_event_data,
 )
-from fleetdock.models import ErrorCode, InitMode, StandardCommand, StandardResponse
+from fleetdock.event_models import STANDARD_EVENT_CLASSES
+from fleetdock.models import CapabilityName, ErrorCode, InitMode, StandardCommand, StandardResponse
 from fleetdock.movement import MoveTargetKind
+from fleetdock.readiness import ReadinessIssue, ReadinessRequirement
 from fleetdock.sensors import SensorSourceKind
+from fleetdock.takeoff import (
+    TakeoffExecutionState,
+    TakeoffOptions,
+    TakeoffProgressCallback,
+    TakeoffStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +51,17 @@ class Px4MavlinkAdapter(DeviceAdapter):
         self.latest_telemetry: Dict[str, Any] = {}
         self._telemetry_state: Dict[str, Any] = {}
         self._state_lock = Lock()
+        self._control_authority = ControlAuthority()
+        self._takeoff_cancel_event: Optional[Event] = None
+        self._telemetry_lease_lock = Lock()
+        self._telemetry_leases: Dict[str, Dict[str, Any]] = {}
         self._sensor_backend = (
             _create_px4_integrated_sensor_backend(self.client)
             if callable(getattr(self.client, "available_sensor_streams", None))
             and callable(getattr(self.client, "subscribe_sensor", None))
             else None
         )
+        self.device_events.set_demand_handler(self._acquire_event_telemetry)
 
     def _build_client(self) -> MavsdkClient:
         if self.connection.mode == InitMode.MANAGED_OBJECT:
@@ -64,6 +79,171 @@ class Px4MavlinkAdapter(DeviceAdapter):
             mavsdk_server_port=int(server_port) if server_port is not None else None,
             camera_stream_uri=self.connection.get_param("camera_stream_uri"),
             camera_stream_source=self.connection.get_param("camera_stream_source", SensorSourceKind.UNKNOWN),
+            sender_system_id=int(self.connection.get_param("sender_system_id", 245)),
+            sender_component_id=int(self.connection.get_param("sender_component_id", 190)),
+            target_system_id=int(self.connection.get_param("target_system_id", 1)),
+            target_component_id=int(self.connection.get_param("target_component_id", 1)),
+            link_profile=str(self.connection.get_param("link_profile", "standard")),
+        )
+
+    def _command_scope(self, command: StandardCommand) -> Any:
+        @contextmanager
+        def scope():
+            release = self._acquire_command_telemetry(command.command)
+            use_timeout = getattr(self.client, "_use_command_timeout", None)
+            timeout_scope = use_timeout(command.timeout_s) if callable(use_timeout) else nullcontext()
+            try:
+                with timeout_scope:
+                    yield
+            finally:
+                release()
+
+        return scope()
+
+    def _acquire_command_telemetry(self, command: Any) -> Callable[[], None]:
+        streams_by_command = {
+            "takeoff": {"position", "local_position", "home", "attitude", "battery", "health", "in_air"},
+            "land": {"position", "local_position", "attitude", "in_air", "landed_state"},
+            "return_to_launch": {"position", "home", "health", "in_air"},
+            "hover": {"position", "local_position", "attitude", "health"},
+            "move": {"local_position", "attitude", "velocity_ned", "health"},
+            "stop": {"local_position", "attitude", "velocity_ned", "health"},
+            "get_status": {"position", "local_position", "home", "velocity_ned", "attitude"},
+        }
+        command_name = command.value if hasattr(command, "value") else str(command)
+        streams = streams_by_command.get(command_name, set())
+        return self._acquire_client_telemetry(streams, owner=f"command.{command_name}")
+
+    def _acquire_event_telemetry(self, event_filter: Any) -> Callable[[], None]:
+        event_types: set[EventType] = set()
+        candidates = event_filter if isinstance(event_filter, tuple) else (event_filter,)
+        for candidate in candidates:
+            if isinstance(candidate, EventType):
+                event_types.add(candidate)
+                continue
+            if isinstance(candidate, str):
+                try:
+                    event_types.add(EventType(candidate))
+                except ValueError:
+                    continue
+                continue
+            if isinstance(candidate, type):
+                event_types.update(
+                    event_type
+                    for event_type, event_class in STANDARD_EVENT_CLASSES.items()
+                    if event_class is candidate
+                )
+        streams_by_event = {
+            EventType.GLOBAL_POSITION_UPDATED: "position",
+            EventType.LOCAL_POSITION_UPDATED: "local_position",
+            EventType.HOME_POSITION_UPDATED: "home",
+            EventType.VELOCITY_UPDATED: "velocity_ned",
+            EventType.ATTITUDE_UPDATED: "attitude",
+            EventType.BATTERY_UPDATED: "battery",
+            EventType.HEALTH_UPDATED: "health",
+            EventType.ARMED_CHANGED: "armed",
+            EventType.IN_AIR_CHANGED: "in_air",
+            EventType.LANDED_STATE_CHANGED: "landed_state",
+            EventType.FLIGHT_MODE_CHANGED: "flight_mode",
+        }
+        streams = {streams_by_event[event_type] for event_type in event_types if event_type in streams_by_event}
+        return self._acquire_client_telemetry(streams, owner="event.subscription")
+
+    def _acquire_client_telemetry(self, streams: set[str], *, owner: str) -> Callable[[], None]:
+        if not streams:
+            return lambda: None
+        lease_id = f"lease-{id(streams):x}-{time.monotonic_ns()}"
+        lease: Dict[str, Any] = {"streams": frozenset(streams), "owner": owner, "release": lambda: None}
+        acquire = getattr(self.client, "acquire_telemetry", None)
+        if callable(acquire):
+            lease["release"] = acquire(lease["streams"], owner=owner)
+        with self._telemetry_lease_lock:
+            self._telemetry_leases[lease_id] = lease
+        closed = False
+
+        def release() -> None:
+            nonlocal closed
+            if closed:
+                return
+            closed = True
+            with self._telemetry_lease_lock:
+                active = self._telemetry_leases.pop(lease_id, None)
+            if active is not None:
+                active["release"]()
+
+        return release
+
+    def _rebind_telemetry_leases(self) -> None:
+        acquire = getattr(self.client, "acquire_telemetry", None)
+        with self._telemetry_lease_lock:
+            leases = tuple(self._telemetry_leases.values())
+        for lease in leases:
+            lease["release"]()
+            lease["release"] = (
+                acquire(lease["streams"], owner=lease["owner"])
+                if callable(acquire)
+                else lambda: None
+            )
+
+    def additional_readiness_issues(self, capability: Any, state: Any) -> tuple[ReadinessIssue, ...]:
+        """返回 PX4 针对目标能力追加的就绪问题。
+
+        ``capability`` 是 FleetDock 标准能力，``state`` 是标准状态快照。起飞和通用路线允许
+        “健康的本地位置”与“健康的全球位置和 Home”两条链路择一满足；原生 Mission 强制全球链路，
+        Offboard/手动控制强制本地位置和姿态。返回空元组表示可执行，否则返回供
+        ``wait_until_ready`` 展示的中文问题。
+        """
+        local_ready = bool(
+            state.health_local_position_ok is True
+            and state.local_x_m is not None
+            and state.local_y_m is not None
+            and state.local_z_m is not None
+        )
+        global_ready = bool(
+            state.health_global_position_ok is True
+            and state.health_home_position_ok is True
+            and state.latitude_deg is not None
+            and state.longitude_deg is not None
+            and state.relative_altitude_m is not None
+            and (
+                state.home_absolute_altitude_m is not None
+                or (state.home_latitude_deg is not None and state.home_longitude_deg is not None)
+            )
+        )
+        if capability in {CapabilityName.OFFBOARD, CapabilityName.MANUAL_CONTROL}:
+            if local_ready and state.yaw_deg is not None:
+                return ()
+            return (
+                ReadinessIssue(
+                    ReadinessRequirement.LOCAL_POSITION,
+                    "PX4 Offboard 控制需要健康的本地三维位置和姿态遥测。",
+                ),
+            )
+        if capability is CapabilityName.MISSION:
+            if global_ready:
+                return ()
+            return (
+                ReadinessIssue(
+                    ReadinessRequirement.GLOBAL_POSITION,
+                    "PX4 原生 Mission 需要健康的全球位置、相对高度和 Home 参考。",
+                ),
+            )
+        if capability not in {CapabilityName.TAKEOFF, CapabilityName.ROUTE}:
+            return ()
+        if local_ready or global_ready:
+            logger.debug(
+                "PX4 自适应定位链路已就绪: device_id=%s capability=%s local=%s global=%s",
+                self.device_id,
+                capability.value,
+                local_ready,
+                global_ready,
+            )
+            return ()
+        return (
+            ReadinessIssue(
+                ReadinessRequirement.LOCAL_POSITION,
+                "PX4 起飞或路线需要健康的本地位置，或健康的全球位置、相对高度和 Home 参考。",
+            ),
         )
 
     def _handle_connect(self, command: StandardCommand) -> StandardResponse:
@@ -108,6 +288,7 @@ class Px4MavlinkAdapter(DeviceAdapter):
                     break
                 time.sleep(retry_delay_s)
                 self.client = self._build_client()
+                self._rebind_telemetry_leases()
                 if self._sensor_backend is not None:
                     self._sensor_backend.replace_client(self.client)
         if last_error is not None:
@@ -128,6 +309,22 @@ class Px4MavlinkAdapter(DeviceAdapter):
         return StandardResponse.success(command, "PX4 armed.", {"armed": self.armed, "force": force})
 
     def _handle_lock(self, command: StandardCommand) -> StandardResponse:
+        active_control = self._control_authority.status()
+        if self.flying or (
+            active_control is not None
+            and active_control.owner in {"takeoff", "route"}
+        ):
+            logger.debug(
+                "PX4 拒绝空中或活动飞行任务期间解锁: device_id=%s flying=%s control_owner=%s",
+                self.device_id,
+                self.flying,
+                active_control.owner if active_control is not None else None,
+            )
+            return StandardResponse.failure(
+                command,
+                ErrorCode.DEVICE_STATE_ERROR,
+                "PX4 cannot disarm while airborne or while a flight task owns control.",
+            )
         self.client.disarm()
         previous = self.armed
         self.armed = False
@@ -162,22 +359,136 @@ class Px4MavlinkAdapter(DeviceAdapter):
             {"altitude": altitude, "uses_configured_altitude": altitude is None},
         )
 
+    def execute_takeoff(
+        self,
+        options: TakeoffOptions,
+        *,
+        progress_callback: Optional[TakeoffProgressCallback] = None,
+        cancellation_check: Optional[Callable[[], None]] = None,
+    ) -> TakeoffStatus:
+        """自动选择 PX4 控制链路并确认物理起飞完成。
+
+        ``options`` 使用 FleetDock 通用安全参数；``progress_callback`` 接收强类型状态；
+        ``cancellation_check`` 用于任务取消。方法内部自动解锁，不要求业务代码判断 PX4 或 MAVSDK
+        策略；成功时返回 ``COMPLETED``，失败时抛出带稳定错误码前缀的异常。
+        """
+        if not self.connected:
+            raise RuntimeError("NOT_CONNECTED: device is not connected.")
+        execute = getattr(self.client, "execute_takeoff", None)
+        if not callable(execute):
+            raise RuntimeError("TAKEOFF_STRATEGY_UNAVAILABLE: managed PX4 client lacks confirmed takeoff support.")
+        cancelled = Event()
+        self._takeoff_cancel_event = cancelled
+
+        def check_cancelled() -> None:
+            if cancelled.is_set():
+                raise RuntimeError("TAKEOFF_CANCELLED: takeoff was preempted by a safety action.")
+            if cancellation_check is not None:
+                cancellation_check()
+
+        last_state: Optional[TakeoffExecutionState] = None
+
+        def publish(status: TakeoffStatus) -> None:
+            nonlocal last_state
+            if last_state is None:
+                event_type = EventType.TAKEOFF_STARTED
+            elif status.state is TakeoffExecutionState.COMPLETED:
+                event_type = EventType.TAKEOFF_COMPLETED
+            elif status.state is TakeoffExecutionState.ABORTED:
+                event_type = EventType.TAKEOFF_ABORTED
+            elif status.method is not None and last_state is TakeoffExecutionState.PRECHECKING:
+                event_type = EventType.TAKEOFF_STRATEGY_SELECTED
+            else:
+                event_type = EventType.TAKEOFF_PROGRESS_UPDATED
+            self.publish_standard_event(event_type, EventCategory.STATE, status)
+            last_state = status.state
+            if progress_callback is not None:
+                progress_callback(status)
+
+        logger.debug(
+            "PX4 开始自动适配起飞: device_id=%s target_altitude_m=%.2f",
+            self.device_id,
+            options.target_altitude_m,
+        )
+
+        release_telemetry = self._acquire_client_telemetry(
+            {"position", "local_position", "home", "attitude", "battery", "health", "in_air"},
+            owner="task.takeoff",
+        )
+        try:
+            with self._control_authority.acquire(
+                "takeoff",
+                50,
+                cancel=cancelled.set,
+            ):
+                result = execute(
+                    options,
+                    progress_callback=publish,
+                    cancellation_check=check_cancelled,
+                )
+                self.armed = True
+                self.flying = True
+                return result
+        except ControlConflictError as exc:
+            raise RuntimeError(f"TAKEOFF_CONTROL_CONFLICT: {exc}") from exc
+        finally:
+            release_telemetry()
+            self._takeoff_cancel_event = None
+
+    def acquire_capability_telemetry(self, capability: CapabilityName) -> Callable[[], None]:
+        """为一次标准能力检查或会话申请必要遥测并返回幂等释放函数。
+
+        ``capability`` 使用 FleetDock 标准能力；PX4 适配器自动选择本地或全球位置、姿态、速度、
+        Home、健康和电池等流，并复用已有订阅。调用方须在等待、任务或会话结束时释放，业务 Demo
+        无需直接调用本适配器入口。
+        """
+        streams_by_capability = {
+            CapabilityName.TAKEOFF: {"position", "local_position", "home", "attitude", "battery", "health"},
+            CapabilityName.ROUTE: {"position", "local_position", "home", "velocity_ned", "attitude", "health"},
+            CapabilityName.MISSION: {"position", "home", "velocity_ned", "health"},
+            CapabilityName.MOVE: {"position", "local_position", "velocity_ned", "attitude", "health"},
+            CapabilityName.OFFBOARD: {"local_position", "velocity_ned", "attitude", "health"},
+            CapabilityName.MANUAL_CONTROL: {"local_position", "velocity_ned", "attitude", "health", "in_air"},
+            CapabilityName.STATUS: {"position", "local_position", "home", "velocity_ned", "attitude"},
+        }
+        return self._acquire_client_telemetry(
+            streams_by_capability.get(capability, set()),
+            owner=f"capability.{capability.value}",
+        )
+
+    def supports_confirmed_takeoff(self) -> bool:
+        """返回当前 PX4 client 是否提供自动适配且可确认物理完成的起飞入口。"""
+        return callable(getattr(self.client, "execute_takeoff", None))
+
     def _handle_land(self, command: StandardCommand) -> StandardResponse:
-        self.client.land()
-        self.flying = False
-        return StandardResponse.success(command, "PX4 land command sent.", {"flying": self.flying})
+        with self._control_authority.acquire("land", 80, preempt=True):
+            self.client.land()
+        return StandardResponse.success(
+            command,
+            "PX4 land command sent.",
+            {"flying": self.flying, "landing_requested": True},
+        )
 
     def _handle_return_to_launch(self, command: StandardCommand) -> StandardResponse:
-        self.client.return_to_launch()
+        with self._control_authority.acquire("return_to_launch", 80, preempt=True):
+            self.client.return_to_launch()
         self.last_velocity = {"x": 0.0, "y": 0.0, "z": 0.0, "speed": 0.0}
         return StandardResponse.success(command, "PX4 return-to-launch command sent.")
 
     def _handle_hover(self, command: StandardCommand) -> StandardResponse:
-        self.client.hold()
+        with self._control_authority.acquire("hover", 70, preempt=True):
+            self.client.hold()
         self.last_velocity = {"x": 0.0, "y": 0.0, "z": 0.0, "speed": 0.0}
         return StandardResponse.success(command, "PX4 hold command sent.")
 
     def _handle_move(self, command: StandardCommand) -> StandardResponse:
+        active_control = self._control_authority.status()
+        if active_control is not None and active_control.owner != "move":
+            return StandardResponse.failure(
+                command,
+                ErrorCode.DEVICE_STATE_ERROR,
+                f"PX4 control is owned by '{active_control.owner}'.",
+            )
         if command.params.get("control_mode") == "body_velocity":
             velocity = {
                 "forward_m_s": float(command.params.get("forward_m_s", 0.0)),
@@ -271,12 +582,14 @@ class Px4MavlinkAdapter(DeviceAdapter):
         )
 
     def _handle_stop(self, command: StandardCommand) -> StandardResponse:
-        self.client.stop()
+        with self._control_authority.acquire("stop", 70, preempt=True):
+            self.client.stop()
         self.last_velocity = {"x": 0.0, "y": 0.0, "z": 0.0, "speed": 0.0}
         return StandardResponse.success(command, "PX4 stop command sent.", {"velocity": dict(self.last_velocity)})
 
     def _handle_emergency_stop(self, command: StandardCommand) -> StandardResponse:
-        self.client.emergency_stop()
+        with self._control_authority.acquire("emergency_stop", 100, preempt=True):
+            self.client.emergency_stop()
         self.armed = False
         self.flying = False
         self.last_velocity = {"x": 0.0, "y": 0.0, "z": 0.0, "speed": 0.0}
@@ -306,6 +619,52 @@ class Px4MavlinkAdapter(DeviceAdapter):
         )
 
     def execute_native_route(
+        self,
+        route: Any,
+        *,
+        state: Any = None,
+        altitude_m: Optional[float] = None,
+        speed_m_s: float = 0.0,
+        heading: Any = None,
+        timeout_s: float = 60.0,
+        max_duration_s: Optional[float] = None,
+        guard_callback: Optional[Callable[[], None]] = None,
+        event_callback: Optional[Callable[..., None]] = None,
+        route_event_callback: Optional[Callable[..., None]] = None,
+        completion_callback: Optional[Callable[[str], None]] = None,
+        action_callback: Optional[Callable[..., None]] = None,
+    ) -> StandardResponse:
+        """在按需持有全球位置、Home、速度和健康遥测期间执行 PX4 原生航线。
+
+        ``route`` 是标准航线，``state`` 提供坐标原点；``altitude_m``、``speed_m_s``、``timeout_s``
+        分别使用米、米/秒和秒，``heading`` 是标准航向策略；``max_duration_s`` 是可选正常执行秒数
+        上限。``guard_callback``、``event_callback``、``route_event_callback``、
+        ``completion_callback`` 和 ``action_callback`` 分别报告守卫、航点、航线、完成与到点动作。
+        SDK 自动复用底层遥测，并在完成、失败或取消后释放；返回 FleetDock 标准响应。
+        """
+        release = self._acquire_client_telemetry(
+            {"position", "home", "velocity_ned", "attitude", "health", "in_air"},
+            owner="task.route",
+        )
+        try:
+            return self._execute_native_route_impl(
+                route,
+                state=state,
+                altitude_m=altitude_m,
+                speed_m_s=speed_m_s,
+                heading=heading,
+                timeout_s=timeout_s,
+                max_duration_s=max_duration_s,
+                guard_callback=guard_callback,
+                event_callback=event_callback,
+                route_event_callback=route_event_callback,
+                completion_callback=completion_callback,
+                action_callback=action_callback,
+            )
+        finally:
+            release()
+
+    def _execute_native_route_impl(
         self,
         route: Any,
         *,
@@ -384,7 +743,13 @@ class Px4MavlinkAdapter(DeviceAdapter):
             if max_duration_s is not None:
                 mission_kwargs["max_duration_s"] = max_duration_s
             mission_executor = cast(Callable[..., bool], self.client.execute_mission)
-            mission_completed = mission_executor(mission_items, **mission_kwargs)
+            cancel_mission = getattr(self.client, "cancel_mission", None)
+            with self._control_authority.acquire(
+                "route",
+                40,
+                cancel=cancel_mission if callable(cancel_mission) else None,
+            ):
+                mission_completed = mission_executor(mission_items, **mission_kwargs)
         except Exception as exc:
             logger.debug("PX4 原生航线执行失败: route=%s error=%s", getattr(route, "name", None), exc, exc_info=True)
             return StandardResponse(
@@ -509,6 +874,7 @@ class Px4MavlinkAdapter(DeviceAdapter):
     def get_vendor_state(self) -> Dict[str, Any]:
         """返回 PX4 原生状态和标准适配器状态快照；返回字典不会暴露内部可变缓存。"""
         status = self.client.get_status() if self.connected else {}
+        control_lease = self._control_authority.status()
         with self._state_lock:
             telemetry = dict(self.latest_telemetry)
         return {
@@ -518,7 +884,13 @@ class Px4MavlinkAdapter(DeviceAdapter):
             "last_velocity": dict(self.last_velocity),
             "px4": status,
             "telemetry": telemetry,
+            "control_owner": control_lease.owner if control_lease is not None else None,
         }
+
+    def telemetry_diagnostics(self) -> Dict[str, Any]:
+        """返回 PX4 按需遥测流、链路配置、分发积压和丢弃计数的安全诊断快照。"""
+        diagnostics = getattr(self.client, "telemetry_diagnostics", None)
+        return dict(diagnostics()) if callable(diagnostics) else {}
 
     def get_managed_object(self) -> Any:
         """返回当前托管的 ``MavsdkClient`` 或兼容 client，供高级单进程接入使用。"""
@@ -537,6 +909,14 @@ class Px4MavlinkAdapter(DeviceAdapter):
 
     def close(self) -> None:
         """停止遥测、关闭底层 client 并发布断开事件；可重复调用且无返回值。"""
+        if self._takeoff_cancel_event is not None:
+            self._takeoff_cancel_event.set()
+        self.device_events.set_demand_handler(None)
+        with self._telemetry_lease_lock:
+            leases = tuple(self._telemetry_leases.values())
+            self._telemetry_leases.clear()
+        for lease in leases:
+            lease["release"]()
         stop_telemetry = getattr(self.client, "stop_telemetry", None)
         if callable(stop_telemetry):
             stop_telemetry()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from dataclasses import dataclass
 import inspect
 import logging
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Protocol, cast,
 from fleetdock._exception_mapping import command_failure
 from fleetdock.events import DeviceEventStream, EventCategory, EventHub, EventType, OriginalEvent, StandardEventType
 from fleetdock.models import CommandName, ConnectionInfo, ErrorCode, ProductKey, ProductProfile, StandardCommand, StandardResponse, normalize_product
+from fleetdock.takeoff import TakeoffAdapter as TakeoffAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +206,8 @@ class DeviceAdapter(ABC):
             return response
 
         try:
-            response = handler(command)
+            with self._command_scope(command):
+                response = handler(command)
         except Exception as exc:
             logger.debug("命令执行异常: command=%s error=%s", command.command.value, exc, exc_info=True)
             response = command_failure(command, exc)
@@ -219,6 +222,11 @@ class DeviceAdapter(ABC):
             response.code.value,
         )
         return response
+
+    def _command_scope(self, command: StandardCommand) -> Any:
+        """返回当前命令的适配器内部执行上下文；默认不附加行为。"""
+        del command
+        return nullcontext()
 
     def _publish_command_completed(self, command: StandardCommand, response: StandardResponse) -> None:
         payload = {

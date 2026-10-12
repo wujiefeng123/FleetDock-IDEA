@@ -30,6 +30,8 @@ build/
 dist/
 *.egg-info/
 pip-wheel-metadata/
+node_modules/
+*.tsbuildinfo
 
 # Tool and IDE local state
 .idea/

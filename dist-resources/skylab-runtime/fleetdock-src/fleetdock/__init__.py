@@ -5,7 +5,7 @@ import logging
 from fleetdock.adapters import (
     DeviceAdapter, LifecycleAdapter, MavsdkClient, MissionAdapter, MockDroneAdapter,
     MockRobotDogAdapter, MockSensorBackend, MotionAdapter, NativeRouteCallbacks, NativeRouteRequest, RouteAdapter,
-    RouteExecutionCallbacks, RouteExecutionRequest, Px4MavlinkAdapter, TelemetryAdapter,
+    RouteExecutionCallbacks, RouteExecutionRequest, Px4MavlinkAdapter, TakeoffAdapter, TelemetryAdapter,
 )
 from fleetdock.device_factory import DeviceFactory
 from fleetdock.debug import DeviceDebug, SensorDashboard
@@ -139,6 +139,11 @@ from fleetdock.events import (
     StateChange,
     StateChangedEvent,
     StandardEventType,
+    TakeoffAbortedEvent,
+    TakeoffCompletedEvent,
+    TakeoffProgressUpdatedEvent,
+    TakeoffStartedEvent,
+    TakeoffStrategySelectedEvent,
     VendorEvent,
     Vector3,
     Velocity,
@@ -258,6 +263,7 @@ from fleetdock.task_models import (
     UnlockStrategy,
 )
 from fleetdock.tasking.session import TaskSession
+from fleetdock.takeoff import TakeoffExecutionState, TakeoffMethod, TakeoffOptions, TakeoffStatus
 from fleetdock.runtime import ManagedWorker, WorkerState, WorkerStatus
 from fleetdock.sensors import (
     CameraIntrinsics,
@@ -299,7 +305,7 @@ from fleetdock.sensors import (
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AdapterFactory",
@@ -576,6 +582,16 @@ __all__ = [
     "TaskStepHookEvent",
     "TaskStepHookPhase",
     "TaskStepResult",
+    "TakeoffAdapter",
+    "TakeoffAbortedEvent",
+    "TakeoffCompletedEvent",
+    "TakeoffExecutionState",
+    "TakeoffMethod",
+    "TakeoffOptions",
+    "TakeoffProgressUpdatedEvent",
+    "TakeoffStartedEvent",
+    "TakeoffStatus",
+    "TakeoffStrategySelectedEvent",
     "UnlockStrategy",
     "TelemetryAdapter",
     "VendorEvent",

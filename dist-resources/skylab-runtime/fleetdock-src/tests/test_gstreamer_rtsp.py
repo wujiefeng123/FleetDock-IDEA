@@ -193,6 +193,7 @@ class GStreamerRtspTests(unittest.TestCase):
         self.assertEqual(mount.factory.latency, 0)
         self.assertEqual(mount.factory.protocols, _FakeRtsp.RTSPLowerTrans.TCP)
         self.assertIn("max-buffers=1 leaky-type=downstream", mount.factory.launch)
+        self.assertIn("complexity=medium", mount.factory.launch)
         self.assertIn("gop-size=30 enable-frame-skip=true", mount.factory.launch)
         frame = bytes(2 * 2 * 3)
         self.assertFalse(mount.push(2, 2, "BGR", frame))
@@ -212,6 +213,21 @@ class GStreamerRtspTests(unittest.TestCase):
         mount.close()
         self.assertTrue(appsrc.ended)
         self.assertFalse(mount.push(2, 2, "BGR", frame))
+
+    def test_mount_exposes_quality_and_latency_tradeoff_parameters(self) -> None:
+        mount = rtsp._GStreamerMount(
+            _FakeGst,
+            _FakeRtsp,
+            self.rtsp_server,
+            30.0,
+            8_000,
+            gop_frames=60,
+            encoder_complexity="high",
+            enable_frame_skip=False,
+        )
+        self.assertIn("bitrate=8000000", mount.factory.launch)
+        self.assertIn("complexity=high", mount.factory.launch)
+        self.assertIn("gop-size=60 enable-frame-skip=false", mount.factory.launch)
 
     def test_shared_server_registers_mount_and_rejects_duplicate_path(self) -> None:
         with (

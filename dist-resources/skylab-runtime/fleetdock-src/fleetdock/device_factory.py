@@ -93,6 +93,7 @@ class Px4GenericBuilder(_DeviceBuilder):
         mavsdk_server_port: Optional[int] = None,
         camera_stream_uri: Optional[str] = None,
         camera_stream_source: SensorSourceKind = SensorSourceKind.UNKNOWN,
+        link_profile: str = "standard",
     ) -> "Px4GenericBuilder":
         """配置 PX4 MAVSDK 连接参数。
 
@@ -100,10 +101,19 @@ class Px4GenericBuilder(_DeviceBuilder):
         PX4 时可用 `mavsdk_server_port` 指定不同本地 gRPC 端口，未指定时 SDK 自动分配；
         ``camera_stream_uri`` 是可选 RTSP 等视频地址，只用于把已经确认存在的视频源注册为标准 RGB
         相机，不会写入日志；``camera_stream_source`` 声明该流来自物理设备、仿真器或未知来源，默认不
-        猜测。是否强制解锁属于运行期决策，应在调用 `drone.unlock(force=True)` 时显式指定，而不是在
-        建连参数中预设。返回当前 builder。
+        猜测。``link_profile`` 选择 `simulation`、`standard` 或 `low_bandwidth` 遥测预算；室内低速
+        数传使用 `low_bandwidth`，只影响 SDK 内部按需流和频率，不改变公共设备调用。是否强制解锁
+        属于运行期决策，应在调用 `drone.unlock(force=True)` 时显式指定，而不是在建连参数中预设。
+        返回当前 builder。
         """
-        self._params = {"endpoint": endpoint, "timeout_s": timeout_s}
+        selected_link_profile = str(link_profile).strip().lower()
+        if selected_link_profile not in {"simulation", "standard", "low_bandwidth"}:
+            raise ValueError("link_profile must be simulation, standard, or low_bandwidth.")
+        self._params = {
+            "endpoint": endpoint,
+            "timeout_s": timeout_s,
+            "link_profile": selected_link_profile,
+        }
         if mavsdk_server_port is not None:
             self._params["mavsdk_server_port"] = int(mavsdk_server_port)
         if camera_stream_uri:

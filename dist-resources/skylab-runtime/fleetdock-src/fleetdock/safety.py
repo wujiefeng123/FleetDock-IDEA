@@ -243,18 +243,21 @@ class SafetySupervisor:
         self,
         follower: BaseDevice,
         leader: BaseDevice,
+        *,
+        follower_xy: Optional[tuple[float, float]] = None,
+        leader_xy: Optional[tuple[float, float]] = None,
     ) -> SafetyDecision:
-        """检查 follower 与 leader 的本地平面距离是否超过策略上限。
+        """检查 follower 与 leader 的公共平面距离是否超过策略上限。
 
-        距离单位为米；缺少任一设备本地位置时不在该方法内判定失败，调用方应先使用
-        ``evaluate_device(...)`` 检查遥测可用性。返回 ``SafetyDecision``，违规编码为
-        ``leader_distance_exceeded``。
+        ``follower_xy``、``leader_xy`` 是可选的同一坐标原点下米制位置；省略时兼容读取设备本地
+        状态，但调用方只有在确认设备共享局部原点时才能依赖该回退。缺少位置时不在本方法内判定
+        失败，调用方应先检查遥测。返回 ``SafetyDecision``，违规编码为 ``leader_distance_exceeded``。
         """
         max_distance_m = self.policy.max_distance_from_leader_m
         if max_distance_m is None:
             return SafetyDecision.allow()
-        follower_xy = _local_xy(follower.state.snapshot())
-        leader_xy = _local_xy(leader.state.snapshot())
+        follower_xy = follower_xy if follower_xy is not None else _local_xy(follower.state.snapshot())
+        leader_xy = leader_xy if leader_xy is not None else _local_xy(leader.state.snapshot())
         if follower_xy is None or leader_xy is None:
             return SafetyDecision.allow()
         distance_m = math.hypot(leader_xy[0] - follower_xy[0], leader_xy[1] - follower_xy[1])
@@ -272,12 +275,19 @@ class SafetySupervisor:
         )
         return SafetyDecision.block((violation,))
 
-    def evaluate_fleet_spacing(self, devices: Sequence[BaseDevice], *, now_s: float) -> SafetyDecision:
-        """检查多设备之间的最小本地平面间距。
+    def evaluate_fleet_spacing(
+        self,
+        devices: Sequence[BaseDevice],
+        *,
+        now_s: float,
+        positions: Optional[Mapping[str, tuple[float, float]]] = None,
+    ) -> SafetyDecision:
+        """检查多设备之间的最小公共平面间距。
 
-        ``devices`` 可以包含 leader 和 followers；``now_s`` 保留给后续新鲜度检查扩展，当前只用于
-        保持接口一致。只比较已有本地位置的设备。距离低于 ``SafetyPolicy.min_separation_m`` 时
-        返回阻断决策。
+        ``devices`` 可以包含 leader 和 followers；``positions`` 可按设备业务 ID 提供已经转换到
+        同一原点的 x/y 米制位置。省略时兼容读取设备本地状态，但只适用于确定共享局部原点的设备。
+        ``now_s`` 保留给后续新鲜度检查扩展。距离低于 ``SafetyPolicy.min_separation_m`` 时返回
+        阻断决策。
         """
         del now_s
         min_separation_m = self.policy.min_separation_m
@@ -285,7 +295,11 @@ class SafetySupervisor:
             return SafetyDecision.allow()
         samples: list[tuple[BaseDevice, tuple[float, float]]] = []
         for device in devices:
-            xy = _local_xy(device.state.snapshot())
+            xy = (
+                positions.get(_device_public_id(device))
+                if positions is not None
+                else _local_xy(device.state.snapshot())
+            )
             if xy is not None:
                 samples.append((device, xy))
         violations: list[SafetyViolation] = []

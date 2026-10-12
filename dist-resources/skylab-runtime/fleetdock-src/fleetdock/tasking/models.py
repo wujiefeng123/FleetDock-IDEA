@@ -336,7 +336,8 @@ class TaskResult:
     `status` 表示成功、失败、超时或守卫触发；`steps` 按执行顺序保存每个步骤结果；
     `failed_step` 和 `triggered_guard` 分别标记失败步骤和触发的守卫原因；``completion_reason`` 是供
     业务判断的结构化结束原因，``safety_action`` 保存避障触发的安全动作名；``cleanup_result`` 是
-    ``ensure_return_to_launch()`` 等必执行清理计划的独立结果，避免把主任务失败与安全返航成功混为一谈。
+    ``ensure_land()``、``ensure_return_to_launch()`` 等必执行清理计划的独立结果，避免把主任务失败与
+    安全收尾成功混为一谈。
     """
 
     ok: bool

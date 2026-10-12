@@ -24,13 +24,14 @@ from fleetdock import (
     OpticalFlowSample,
     PointCloudFrame,
     SensorDescriptor,
-    SensorDashboard,
     SensorHub,
     SensorKind,
     StereoFrame,
     Vector3,
 )
-from fleetdock.debug import _OpenCvDebugDisplay, camera as debug_camera
+from fleetdock.debug import camera as debug_camera
+from fleetdock.debug.camera import _OpenCvDebugDisplay
+from fleetdock.debug.hud import SensorDashboard
 
 
 class FakeDisplay:
@@ -112,8 +113,8 @@ class DeviceDebugTests(unittest.TestCase):
         handled = []
         frame = image_sample()
 
-        with patch("fleetdock.debug.SensorHub._register_camera") as register_camera:
-            with patch("fleetdock.debug.DeviceDebug") as debug_type:
+        with patch.object(debug_camera.__globals__["SensorHub"], "_register_camera") as register_camera:
+            with patch("fleetdock.debug.device.DeviceDebug") as debug_type:
                 debug = debug_type.return_value
 
                 def show_camera(sensor_id, handler, *, title=None) -> None:

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleetdock.dev/protocol/v1/telemetry.schema.json",
+  "title": "FleetDock telemetry message",
+  "type": "object",
+  "required": ["version", "type"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": {
+      "enum": [
+        "session.hello",
+        "device.state.get",
+        "sensor.list",
+        "sensor.subscribe",
+        "sensor.unsubscribe"
+      ]
+    },
+    "request_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "sensor_id": { "type": "string", "minLength": 1 },
+    "subscription_id": { "type": "string", "minLength": 1 },
+    "max_rate_hz": { "type": "number", "exclusiveMinimum": 0 }
+  },
+  "additionalProperties": true
+}

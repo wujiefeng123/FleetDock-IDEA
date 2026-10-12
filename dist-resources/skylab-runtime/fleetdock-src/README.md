@@ -1,6 +1,6 @@
 # FleetDock
 
-FleetDock 是面向协同设备控制的 Python SDK。当前版本为 `0.3.0`：内置 Mock 无人机/机器狗用于零依赖学习，PX4 集成为 `beta`，Unitree Go2/G1 仅由 Mock 适配器支撑并标记为 `simulated`，DJI 产品目前是 `planned` 的产品画像，不能视为真机已接入。完整边界见 [支持矩阵](docs/support-matrix.md)。
+FleetDock 是面向协同设备控制的 Python SDK。当前版本为 `0.4.0`：内置 Mock 无人机/机器狗用于零依赖学习，PX4 集成为 `beta`，Unitree Go2/G1 仅由 Mock 适配器支撑并标记为 `simulated`，DJI 产品目前是 `planned` 的产品画像，不能视为真机已接入。完整边界见 [支持矩阵](docs/support-matrix.md)。
 
 首次学习建议先使用不依赖厂商 SDK、仿真器或真机的 Mock 示例：
 
@@ -14,7 +14,12 @@ python examples/quickstart/00_mock_robot_dog.py
 
 新项目可从 `fleetdock.api` 使用精简稳定入口；历史 `from fleetdock import ...` 继续兼容。事件、路线、安全和避障等高级类型分别从对应领域模块导入，以降低顶层 API 的长期兼容成本。
 
+需要记录设备标准命令生命周期时，可通过 `device.add_command_observer(...)` 订阅 `started`、`completed` 和 `failed` 阶段；观察器用于 IDE、诊断和审计集成，其异常不会改变设备命令结果，设备关闭时订阅会自动清理。
+
 当前发布门禁包括：全仓源码 mypy 检查、Ruff 未定义/未使用符号检查、85% 行覆盖率、Python 3.11/3.12 单元测试、sdist/wheel 构建和 wheel 安装导入验证。Mock Quick Start 可在无外部设备的普通 CI 中运行；真实 PX4 SITL 烟雾测试通过 `FLEETDOCK_RUN_PX4_SITL=1` 显式启用。
+
+`vision`、`full-prod` 和 `full-dev` 将 NumPy 限定为 `>=1.26,<2.4`，避免 NumPy 2.4 类型存根使用
+Python 3.12 专属语法而破坏项目仍承诺支持的 Python 3.11 mypy 门禁。
 
 ## Fleet 动态跟随
 
@@ -321,6 +326,10 @@ fleetdock/
   tasks.py                 # 任务编排兼容入口，继续导出历史公共符号
   models.py                # 枚举、连接、产品、能力、响应和错误模型
   registry.py              # ProductRegistry 和内置产品配置
+packages/
+  fleetdock-server/        # 独立 Python WS 服务端、客户端和图形控制器
+  fleetdock-js/            # 浏览器与 Node.js 的 TypeScript WS 客户端
+protocol/                  # WS 协议、Schema、AsyncAPI 和消息示例
 examples/
   demo/                    # 面向 SDK 使用者的短示例
 tests/                     # 基于标准库 unittest 的测试
@@ -477,7 +486,9 @@ unsubscribe_route_started = drone.events.on(
 
 厂商适配器应优先把原生事件转换为标准事件；额外字段放入 `extensions`，来源事件放入 `event.original`，其中包含事件名、完整可序列化数据和仅限进程内使用的可选 `native_data`。无法匹配标准的厂商事件使用 `VendorEvent` 和 `vendor.<厂商>.<事件>` 形式透传，可直接访问 `event.event_name`、`event.raw_data` 和 `event.native_data`。与当前设备相关的自定义业务事件使用 `device.events.publish_custom("custom.<应用>.<事件>", payload)` 发布，使发布、订阅和排空操作统一归属单设备事件流。使用结束后应在 `finally` 中调用 `unsubscribe()` 和 `device.close()`，确保命令或返航发生异常时仍能释放订阅及后台遥测资源。
 
-PX4 MAVSDK 适配器当前会自动订阅并标准化转换 `position`、`position_velocity_ned`、`home`、`velocity_ned`、`attitude_euler`、`battery`、`health`、`armed`、`in_air`、`landed_state` 和 `flight_mode`。其中未知或尚未标准化的 PX4 数据可以通过适配器的厂商事件透传为 `vendor.px4.<stream>.updated`，但并不表示 MAVSDK 的所有 telemetry 流都已经被 FleetDock 标准事件完整覆盖；新增遥测流时需要同步补充标准事件、转换逻辑、产品能力声明、示例和测试。
+PX4 MAVSDK 适配器会把 `position`、`position_velocity_ned`、`home`、`velocity_ned`、`attitude_euler`、`battery`、`health`、`armed`、`in_air`、`landed_state` 和 `flight_mode` 转换为标准事件，但不会在连接后无条件启动全部流。电池、解锁、空中、着陆、模式和健康使用低带宽基础订阅；位置、速度、姿态和 Home 由起飞、移动、航线、手动控制、强类型事件订阅及 WS 状态会话自动申请，多个使用者复用同一路 MAVSDK 订阅，结束后自动释放。`events.on(EventType.GLOBAL_POSITION_UPDATED, ...)` 和现有 Plan/Demo 调用不需要增加厂商订阅代码；普通 `events.subscribe(handler)` 只观察已经激活的事件，不会隐式开启所有高频流。
+
+事件分发和 PX4 回调队列均为有界队列。位置、速度、姿态等同类高频遥测过载时合并旧事件并保留最新值，命令、状态变化和安全事件不会被普通遥测优先挤出。若飞控不支持请求的遥测频率，SDK 会报告 `rate_configuration_failed` 诊断并继续使用飞控默认频率，避免位置流中断。`device.diagnostics()` 提供事件积压、容量、最高水位、丢弃数、当前遥测需求和回调丢弃数，便于区分数传拥塞、SDK 背压与遥测过期。电池剩余量继续在适配器边界统一归一化为 FleetDock 约定的 `0~1` 比例。
 
 ## 标准传感器订阅
 
@@ -550,65 +561,122 @@ unsubscribe = device.sensors.subscribe(gas_kind, on_gas)
 
 因此“相机和点云默认 `LATEST_ONLY + capacity=1`”是 SDK 根据 `SensorKind` 解析出的默认策略，不是要求开发者记忆魔法数字。需要覆盖时传入 `SensorStreamOptions(delivery=..., capacity=..., overflow=..., max_rate_hz=...)`；交付模式和溢出行为使用 `SensorDeliveryMode`、`SensorOverflowPolicy` 枚举，`capacity` 仍是样本数量，`max_rate_hz` 仍是赫兹数值。`device.sensors.status(...)` 可查看接收、交付、丢弃、回调异常和订阅者数量，并通过 `age_s()`、`is_stale(max_age_s)` 判断数据新鲜度。
 
-### 标准传感器可视化调试
+### WS 服务与图形调试控制器
 
-`device.sensors` 始终是正式、完整的数据入口；`device.debug` 只是基于该入口建立普通订阅，把同一份标准
-样本分送给本地窗口和可选开发者回调。调试模块不直接读取 MAVSDK、DJI SDK、Unitree SDK 或
-`native_data`，因此不同品牌无人机、机械狗、仿真器和自定义后端共享相同用法。窗口依赖可选的
-NumPy、OpenCV 与 Pillow，使用前安装 `python -m pip install -e ".[vision]"`。
+FleetDock 同时支持两种部署方式：单机程序直接调用核心 `fleetdock` SDK；或安装独立
+`fleetdock-server` 包，把一个或多个标准设备发布为 WS 服务。Python 图形界面和未来 Web UI 都是
+WS 客户端，只依赖同一套控制、状态和传感器语义。服务包依赖核心 SDK，核心 SDK 不反向依赖服务包；
+TypeScript 客户端位于 `packages/fleetdock-js`，协议定义位于 `protocol/`。
 
-需要直接验收设备控制链时，可以打开单设备图形调试控制器：
+浏览器控制器示例位于 `packages/fleetdock-js/examples/web`。它直接使用 TypeScript SDK，支持键盘、
+鼠标和触屏的多动作组合、失焦释放、设备状态及传感器发现；页面还会显示并调整水平与升降速度，
+分别支持 `-/+` 和 `[/]` 快捷键，并通过 `manual.configure` 以服务端返回值为准同步状态。
+视频区域通过独立 WHEP/WebRTC 会话播放，
+不会把 RGB 像素或媒体会话塞入 FleetDock WS。`packages/fleetdock-js` 的 `npm run build` 会一次性
+生成 SDK 的 JavaScript/类型声明和 `dist/web` 静态页面；之后使用 `npm run web` 只服务已有产物，
+不会再次编译。只有页面开发热更新场景才使用 `npm run web:dev`。
 
-```python
-with drone:
-    drone.debug.controller(
-        camera_subscribe=lambda handler: drone.sensors.subscribe(
-            SensorKind.RGB_CAMERA,
-            handler,
-        ),
-    )
+```powershell
+python -m pip install -e .
+python -m pip install -e "packages/fleetdock-server[drone]"
+fleetdock-server --mock-drone --host 127.0.0.1 --port 8765
+fleetdock-server-drone --endpoint "udpin://0.0.0.0:14555" --ws-port 23045
 ```
 
-`controller()` 把连接、普通解锁、强制解锁、上锁、起飞高度、起飞、悬停、降落、返航、停止、紧急停机以及机体系
-前后左右、升降和偏航控制集中在一个窗口中，并显示标准设备状态、命令响应、摄像头和基础 HUD。控制器
-只调用 `Drone`、`BaseDevice`、`device.state` 和 `device.sensors` 等公共 SDK，不读取 MAVSDK、MAVLink
-或厂商原生对象。按钮会按产品能力、连接、解锁和在空中状态启用；紧急停机需要在三秒内再次点击确认。
+室内低速数传使用 `--link-profile low_bandwidth`；仿真可使用 `simulation`，未指定时为 `standard`。
+链路策略只影响 SDK 内部按需遥测频率，不改变 Demo、WS 路径或公共控制命令。
+
+服务端在同一端口提供 `/ws/control` 与 `/ws/telemetry`。控制连接负责控制租约、动作按下/抬起、心跳
+和离散命令；遥测连接负责设备状态、传感器枚举与订阅。每台设备同一时刻只允许一个手动控制租约，
+客户端断开或输入超时会清空动作并关闭手动控制会话。默认只监听本机；当前版本尚未内置 TLS、认证与
+授权，不能直接暴露到公网。
+
+需要直接验收设备控制链时，显式启动服务端，再让 Python 图形控制器作为普通 WS 客户端连接：
+
+```python
+from fleetdock_server import ControlMode, FleetDockServer, PythonController
+
+with drone, FleetDockServer() as server:
+    device_id = drone.metadata.device_id or drone.instance_id
+    server.register(drone, device_id=device_id)
+    endpoint = server.start("127.0.0.1", 8765)
+    PythonController(
+        endpoint,
+        device_id,
+        mode=ControlMode.SIMULATION,
+        rtsp_uri="rtsp://127.0.0.1:8554/Drone1_camera_front",
+    ).run()
+```
+
+核心 `fleetdock` 不再提供 `device.debug.controller()`：`device.debug` 只负责标准传感器的本地调试，
+控制器属于独立 `fleetdock-server` 包。`packages/fleetdock-server/examples/drone_controller_debug.py`
+显式展示服务端和
+客户端的生命周期。控制器把连接、普通
+解锁、强制解锁、上锁、默认五米起飞、悬停、降落、返航、停止、紧急停机以及机体系前后左右、升降和
+偏航控制集中在一个窗口中。按钮会按服务端返回的设备能力和状态启用；紧急停机需要在三秒内再次确认。
 “台架强解锁”同样要求在三秒内二次点击确认，并且只调用公共 `drone.unlock(force=True)`；它只用于已采取
 安全措施的台架测试或仿真诊断，不能替代飞行预检，PX4 可能在命令成功后立即自动上锁。普通解锁失败时不会
 自动升级成强制解锁。控制器收到飞控主动上锁的遥测后会在操作日志中解释原因，避免把飞控安全行为误判为
 控制器发送了“锁定”命令；需要飞行时应解决预检问题，使用普通解锁并在飞控允许时间内起飞。
-`camera_subscribe` 让应用明确选择标准摄像头；它接收控制器的标准帧回调，并返回取消订阅函数。省略该
-参数时控制器仍会自动选择设备的主 RGB、深度或双目相机。关闭窗口会取消控制器创建或接管的订阅并结束
-手动控制，不会自动返航、降落或关闭设备。完整的极简示例见
-`examples/demo/drone_controller_debug.py`。
+关闭窗口会释放控制租约和手动控制，不会自动返航或降落。普通 RGB 视频刻意不经过 WS：真机或仿真
+继续提供 RTSP，Python 控制器直接解码 RTSP；Web 端通过独立流媒体服务把 RTSP 转为 WebRTC。
+高频或强类型传感器数据仍可走 `/ws/telemetry`，服务端采用有界、仅保留最新样本的交付策略。
+
+`fleetdock-server` 提供 `GStreamerWhipRelay`，用于在当前 Python 进程中通过 GStreamer 把外部 H.264
+RTSP 拉流地址无转码发布到 SRS WHIP：管线只执行 RTP 解包、H.264 参数整理、RTP 重新封装和 WebRTC
+传输，不经过 RTMP，也不会再次解码或编码视频。发布器具有状态快照、错误脱敏和幂等关闭，并负责释放
+GStreamer 管线及监听线程。兼容入口 `FfmpegWhipRelay`（原名 `WhipRelay`）继续保留给需要统一转码
+输入格式的场景。`packages/fleetdock-server/src/fleetdock-cli/drone_server.py` 只透传已经存在的 RTSP
+拉流地址，不创建 RTSP Server、不订阅 Project AirSim 相机，也不负责启动真机或仿真媒体源。
+
+```powershell
+$env:FLEETDOCK_SRS_WHIP_URL = "https://media.example/rtc/v1/whip/?app=live&stream=drone-001"
+$env:FLEETDOCK_SRS_WHEP_URL = "https://media.example/rtc/v1/whep/?app=live&stream=drone-001"
+$env:FLEETDOCK_MEDIA_BACKEND = "gstreamer" # 默认；兼容模式可设为 ffmpeg
+python packages/fleetdock-server/src/fleetdock-cli/drone_server.py `
+  --endpoint "udpin://0.0.0.0:14555" `
+  --camera-rtsp-uri "rtsp://127.0.0.1:8554/Drone1_camera_front" `
+  --camera-source physical `
+  --media-publish-url $env:FLEETDOCK_SRS_WHIP_URL `
+  --whep-url $env:FLEETDOCK_SRS_WHEP_URL `
+  --media-backend $env:FLEETDOCK_MEDIA_BACKEND
+```
+
+Web Demo 使用非 Trickle ICE 创建 WHEP 会话，只有收到首个可解码视频帧后才显示 `VIDEO ONLINE`；
+无流、空轨道或首帧超时会清理 PeerConnection 和 WHEP 会话，但不会影响 WS 控制租约。对于另外部署
+且真实支持 `ANNOUNCE/RECORD` 的媒体服务器，仍可单独使用 `RtspRelay` 执行 RTSP/TCP 无转码转推。
 
 方向按钮和运动热键使用游戏式“按住运动、松开即停”：鼠标按住方向按钮，或按住 `W/A/S/D`、方向键、
 `R/F`（也支持 `PageUp/PageDown`）及 `Q/E` 时持续控制前后左右、升降和偏航，任一输入松开后立即发送
 对应轴的零输入，全部运动键松开后才发送完整零速度。多个运动键可以同时合成，例如 `W+Q` 会在前进的
 同时向左偏航，`W+D+E` 会同时前进、右移和向右偏航；水平对角移动会自动归一化，避免合成速度超过
 当前速度设置。离散命令只在按下瞬间触发一次：`C` 连接、`U` 解锁、`L` 锁定、空格起飞、`Ctrl` 降落、
-`H` 悬停、`T` 返航、`Z` 停止；`+/-` 调整速度，`[/]` 调整起飞高度，`Esc/X` 关闭窗口。Windows
+`H` 悬停、`T` 返航、`Z` 停止；`+/-` 调整水平速度，`[/]` 调整升降速度，`Esc/X` 关闭窗口。Windows
 会读取真实按下/抬起状态，并且控制器窗口失去焦点时自动停止运动，避免按键粘连。
 
-控制器启动时把当前水平速度设为 `3 m/s`，并可在 `0.5 m/s` 至 `20 m/s` 范围内调整；相机画面左下角
-会显示平滑后的实际接收 FPS。速度值仍会经过 FleetDock 手动控制会话裁剪，并受设备或飞控自身速度限制
+控制器启动时把当前水平速度设为 `3 m/s`，并可在 `0.5 m/s` 至 `20 m/s` 范围内调整；升降速度默认
+为 `0.6 m/s`，可在 `0.1 m/s` 至 `2.0 m/s` 范围内调整。起飞按钮不再维护独立高度设置，直接调用
+`drone.takeoff()` 并使用公共 SDK 默认的相对 Home 高度 `5 m`；起飞后的高度由使用者通过升降控制。
+相机画面左下角会显示源帧分辨率和平滑后的实际接收 FPS。速度值仍会经过 FleetDock 手动控制会话裁剪，并受设备或飞控自身速度限制
 约束。仓库提供的 PX4 SITL 启动脚本会把 `MPC_XY_VEL_MAX` 同步设为 PX4 允许的最高值 `20 m/s`，
 只影响本地仿真环境，不由控制器在运行期修改真机参数。
 
-方向控制由公共 `device.manual_control()` 会话承担，而不是由 GUI 维持 PX4 Offboard。会话输入使用设备
+方向控制最终由服务端的公共 `device.manual_control()` 会话承担，而不是由 GUI 或浏览器维持 PX4
+Offboard。交互层只发送 `manual.press`、`manual.release` 和心跳，不发送完整四轴状态，也不依赖操作系统
+约 300 ms 的键盘自动重复。服务端维护当前动作集合并计算四轴状态。会话输入使用设备
 机体系：`forward_m_s`、`right_m_s`、`up_m_s` 单位为米/秒，`yaw_rate_deg_s` 单位为度/秒；持续输入
-由独立控制线程以 5 Hz 更新最新输入，再由会话按配置频率发送；GUI 线程只覆盖一个最新运动状态槽位，
-不会逐条转发或积压长按事件。显示循环独立限制为最高 30 FPS；Windows 下由低级键盘 Hook 线程在消息
+由核心手动会话按配置频率发送；GUI 只在动作边沿变化时发送按下或抬起，长按期间由 WS 心跳维持租约，
+不会逐条转发或积压键盘自动重复事件。显示循环独立限制为最高 30 FPS；Windows 下由低级键盘 Hook 线程在消息
 进入 OpenCV HighGUI 前吞掉所有普通按键的按下、松开和自动重复消息，避免消息队列阻塞整个窗口；只有
 已绑定控制键会更新最新状态，未绑定键不会产生事件，`Alt+Tab`、`Alt+F4` 和 Windows 键仍交给系统；
-超过 `input_timeout_s` 未更新时自动悬停或停止。`release()` 发送零速度并保留会话，
-`close()` 默认执行保护动作但不会返航或降落。同一设备同时只允许一个手动控制会话。PX4 通过 MAVSDK
+超过 `input_timeout_s` 未收到有效心跳时自动悬停或停止。释放租约或断开连接会发送零速度并关闭会话，
+但不会返航或降落。同一设备同时只允许一个 WS 控制租约。PX4 通过 MAVSDK
 `VelocityBodyYawspeed` 转换，Mock 无人机走相同标准命令；当前机器狗产品尚未声明 `MANUAL_CONTROL`。
 
 真实 PX4 视频只有在明确配置 `camera_stream_uri` 后才注册为标准相机，避免没有相机组件的飞控被
-误报为支持摄像头。PX4 后端不会因为本机 Project AirSim 端口可用就隐式合并仿真相机；仿真 RGB
-画面先由 `ProjectAirSimRtspBridge` 转为 RTSP，再通过同一个 `camera_stream_uri` 接入。该地址不会写入
-SDK 日志，`camera_stream_source` 可以继续声明物理、仿真或未知来源。
+误报为支持摄像头。PX4 服务只消费真机、仿真器或独立媒体服务器已经提供的 RTSP 拉流地址，不会因为
+本机 Project AirSim 端口可用就隐式合并仿真相机，也不会自行创建 RTSP Server。该地址不会写入 SDK
+日志，`camera_stream_source` 可以继续声明物理、仿真或未知来源。
 
 Windows 高 DPI 桌面下，调试控制器只为其 GUI 线程启用物理像素坐标，避免系统缩放导致窗口超出屏幕或鼠标按钮命中错位；关闭窗口后会恢复原线程 DPI 上下文。
 控制器、摄像头窗口和传感器仪表盘的标题、状态、HUD、提示与操作日志默认使用中文显示，产品键、PX4、传感器 ID、坐标系、单位及飞行模式等专业标识保持原始格式；`vision` 可选依赖包含 Pillow，并使用同一套系统中文字体完成 Unicode 绘制。
@@ -685,7 +753,8 @@ PX4 无人机的机载视频像素通常来自独立视频链路，而不是通�
 GStreamer RTSP Server 完成低延迟 H.264 编码和发布；`ProjectAirSimRtspBridge` 内部订阅 Project AirSim
 的主 RGB 相机，并通过容量为一帧的最新值队列避免编码变慢时持续积累延迟。同一进程的多路 Bridge
 共享 RTSP Server，每路使用独立路径，关闭其中一路不会中断其他流。业务代码不创建 AirSim client，
-也不处理原生 topic、GStreamer 管线或 Server 生命周期。
+也不处理原生 topic、GStreamer 管线或 Server 生命周期。Project AirSim 回调只替换队列中的最新原始帧，
+像素复制和 stride 归一化在发布线程执行；GStreamer PTS 使用真实帧到达时钟，低于编码帧率上限时不会持续累积播放延迟。
 
 ```python
 from fleetdock import DeviceFactory, SensorKind
@@ -708,7 +777,8 @@ with ProjectAirSimRtspBridge("Drone1") as bridge:
 `examples/demo/drone_camera_debug.py` 通过这条链路建立唯一标准订阅，由后台 Dashboard 显示同一份
 `ImageFrame`，同时通过 `Plan` 完成解锁、八米起飞、悬停和返航。Controller 复用完全相同的
 设备传感器入口，底层不需要 AirSim 专用实现。Project AirSim 0.2.0 某些 RGB 消息会把 `step` 报告为
-单通道步长，SDK 会根据图像尺寸和实际缓冲区长度恢复每行字节数。
+单通道步长，SDK 会根据图像尺寸和实际缓冲区长度恢复每行字节数。后端还会把机器人级 `/actual_pose`
+作为 `vendor.projectairsim.actual_pose` 扩展传感器暴露，并在取消订阅或重新初始化后丢弃旧一代回调，避免旧场景状态污染新会话。
 
 RTSP/H.264 是普通 RGB 视频的统一外部传输边界，不取代 FleetDock 的强类型传感器标准。深度图、双目、
 点云和需要严格采集时间同步的数据继续使用对应 `ImageFrame`、`StereoFrame`、`PointCloudFrame` 后端，
@@ -790,7 +860,7 @@ print(ProductType.PX4_GENERIC.description)    # 面向 PX4 飞控的通用无人
 PX4 通用产品注册为 `ProductType.PX4_GENERIC`。开发者仍然使用标准 `Drone` 对象和 FleetDock 命令：
 
 ```python
-from fleetdock import DeviceFactory, Drone
+from fleetdock import DeviceFactory, Drone, Plan
 
 drone: Drone = (
     DeviceFactory.create()
@@ -800,19 +870,64 @@ drone: Drone = (
 )
 
 drone.connect()
-drone.unlock()
-drone.takeoff(altitude=10)
-drone.return_to_launch()
+result = Plan(drone).takeoff(altitude=10).return_to_launch().run()
+print(result)
 ```
 
-`examples/demo/drone_unlock_takeoff.py` 展示连接、订阅 PX4 主动遥测、解锁、起飞、每 5 秒回显一次经纬度、绝对高度、相对 Home 点高度和本地坐标并返航；如果 RTL 发送失败则尝试直接降落。`examples/demo/px4_takeoff_land.py` 通过代码内 `BENCH_MODE` 选择运行方式：设为 `False` 时，连接后先等待本地位置、Home、相对高度和可解锁状态，使用普通解锁并确认到达起飞高度，固定飞行五秒后确认落地；螺旋桨已经拆除时设为 `True`，同一文件会只通过 FleetDock 公共基础命令执行普通解锁、使用飞控现有高度的 Takeoff、短时等待、Land 和最终上锁。台架模式不以高度变化判断成功，也不会调用 MAVSDK 起飞高度参数写入。公共 `drone.takeoff(altitude=None)` 表示保留飞控或厂商 SDK 已配置的起飞高度，原有默认 5 米行为保持不变。该示例不使用强制解锁，因为 `arm_force()` 只能绕过解锁预检，不能让 PX4 缺失的模式条件变为有效。`MavsdkClient.connect()` 会在收到心跳后于 `timeout_s` 内重试版本握手，验证 MAVLink 双向可用，避免只有单向心跳时延迟到 `arm()` 才超时，也避免 PX4 命令通道刚启动时被一次性握手误判失败；PX4 适配器还会在一次 MAVSDK client 连接失败后关闭当前 client、短暂等待并重建 client 再连接，降低连续运行示例脚本时的偶发连接失败。`drone_unlock_takeoff.py` 不包含 `mavlink_random_route_rtl.py` 的起飞高度确认、随机 Offboard 航线和显式 SDK 强制解锁示例。`examples/run_dev.bat` 会从 WSL 默认路由动态获取 Windows 主机地址，避免 WSL 重启后固定 IP 失效造成 MAVLink 只能单向接收。
+`Plan.takeoff()` 是推荐的任务入口：开发者只声明目标高度，SDK 自动完成起飞预检、标准解锁、底层
+链路选择和物理高度确认，不传 `takeoff_strategy`、MAVSDK 或 Offboard 参数。PX4 本地位置遥测新鲜且
+健康时，会采用从受控真机 Demo 产品化而来的本地位置闭环：先预发送地面保持目标、建立控制模式，再把
+标准 arm 与有界高度目标斜坡并发执行；条件不足时使用飞控原生 Takeoff。原生命令在离地前没有物理进展
+且本地位置此时变为可用时，只允许自动切换一次；已经检测到爬升后绝不切换控制器。直接
+`drone.takeoff()` 继续保持即时命令语义，并要求调用方自行管理解锁和完成确认。
+
+起飞完成后 SDK 会根据 PX4 健康遥测选择交接方式：全球位置和 Home 同时可用时退出 Offboard 并
+交接给飞控 Hold；只有光流等本地定位可用时保留最后的 Offboard 位置目标，避免无 GPS 条件下
+`offboard.stop()` 因无法切换 Hold 而被飞控拒绝，后续本地航线直接复用该控制模式。仅本地定位时
+降落也会跳过 Offboard Stop 并直接请求原生 Land；全球定位可用时仍先正常退出 Offboard。后续航线
+仍由 `AUTO` 在 PX4 Mission 和 SDK 路线执行器间选择；返航继续使用原生 RTL，Action Land 失败时
+有限补发一次 NAV_LAND。起飞、原生 Mission、Land、RTL、Hold 和紧急动作共享适配器控制权仲裁，
+安全动作优先抢占，任何不确定空中状态都不会直接 disarm。`TakeoffOptions`、`TakeoffStatus` 和
+`TakeoffExecutionState` 提供跨厂商安全参数与诊断状态；业务代码通常无需读取自动选出的
+`TakeoffMethod`。
+
+`Plan(drone).wait_until_ready().takeoff(...)` 是推荐的统一起飞入口，不需要先显式调用 `unlock()`。
+默认就绪检查允许健康的本地位置链路与健康的全球位置/Home 链路择一通过，因此同一段 Demo 可用于
+仿真、室内光流真机和室外 GPS 真机；室外任务可传 `require_global_position=True` 强制等待全球定位。
+`hover()` 同样按当前遥测自适应：室外使用 PX4 原生 Hold，室内把最新 Local NED 位置写入并保持
+Offboard；两条定位链路都不安全时返回 `HOLD_STRATEGY_UNAVAILABLE`，不会盲目切换模式。
+本地航线也按同一能力边界选择执行器：健康本地定位可走 SDK Offboard 平滑，健康全球定位与 Home
+可走 PX4 Mission；GPS 航点、强制 Mission 和 RTL 仍是全球定位能力，不能从“室内可起飞”推断为
+无 GPS/Home 时可用。跨环境任务推荐以 `ensure_land()` 收尾，它在正常路径及前序失败后都会执行独立
+降落确认；明确要求返回 Home 时才使用 `ensure_return_to_launch()`。
+
+PX4 起飞预检仍要求电池、姿态和健康等遥测在五秒内更新；进入本地位置闭环爬升后，位置与姿态
+继续使用五秒控制门限，低频电池监督遥测使用独立的十五秒门限。MAVSDK 连接会主动请求 1 Hz
+电池遥测，并把本地位置、姿态和全球位置请求频率分别限制为 5 Hz、5 Hz 和 1 Hz。原生遥测到达后
+先更新控制状态缓存，再通过独立的有序后台队列完成标准事件转换，避免事件发布阻塞 gRPC 遥测读取
+和命令 ACK；既降低串口与 MAVSDK 回调队列压力，也保留电池长期中断和低电量时的安全中止。
+
+`examples/demo/drone_one_meter_forward_backward_land.py` 面向带光流定位的室内 PX4，在同一真机安全
+流程中展示一米起飞，并把按机头方向分两段各前进一米、原路返回起点和返程后悬停五秒编排为一条
+逐段到点的本地折线航线。航线强制使用 FleetDock SDK 本地位置执行，不依赖 GPS，也不直接调用
+MAVSDK 或编写 Offboard 控制循环。示例会在航线开始前打印估算目标和到点判定阈值，执行期间每秒
+输出一次本地位置、速度、遥测新鲜度与队列积压摘要，结束时再输出各目标距离、失败步骤及安全收尾
+是否发送 Land；这些只读诊断不改变航线、容差、超时或降落行为。SDK 分段航线会使用当前航点的
+实际接受半径规划减速，并按当前位置到目标的二维距离持续纠偏；即使已经沿航线方向越过目标，只要
+仍在接受半径外就不会把规划速度锁死为零。
+
+`examples/demo/drone_unlock_takeoff.py` 继续展示连接、订阅 PX4 主动遥测、即时解锁/起飞、每 5 秒回显一次经纬度、绝对高度、相对 Home 点高度和本地坐标并返航；如果 RTL 发送失败则尝试直接降落。公共 `drone.takeoff(altitude=None)` 表示保留飞控或厂商 SDK 已配置的起飞高度，原有默认 5 米行为保持不变。`MavsdkClient.connect()` 会在收到心跳后于 `timeout_s` 内重试版本握手，验证 MAVLink 双向可用，避免只有单向心跳时延迟到 `arm()` 才超时，也避免 PX4 命令通道刚启动时被一次性握手误判失败；PX4 适配器还会在一次 MAVSDK client 连接失败后关闭当前 client、短暂等待并重建 client 再连接，降低连续运行示例脚本时的偶发连接失败。`examples/run_dev.bat` 会从 WSL 默认路由动态获取 Windows 主机地址，避免 WSL 重启后固定 IP 失效造成 MAVLink 只能单向接收。
 `examples/demo/drone_event.py` 默认只按 `GlobalPositionUpdatedEvent` 每 5 秒打印位置摘要和相对高度，完整事件 data 通过脚本内 `VERBOSE_ALL_EVENTS` 开关启用；起飞后持续爬升到 14 米以上、以当前位置为原点执行 20 到 30 米随机半径速度航线，并在结束后返航。
-基础 SDK 继续提供 `drone.unlock(force=False)`、`drone.takeoff(...)`、`drone.move(...)` 等立即执行方法；`unlock()` 默认执行标准解锁，开发者可在读取失败原因后显式调用 `drone.unlock(force=True)` 请求适配器支持的强制解锁。混编 `Fleet` 上推荐只直接执行通用能力，例如 `fleet.connect()`；解锁、起飞、返航等无人机专属动作应先筛选为 `fleet.drones()` 后再调用，例如 `fleet.drones().unlock(force=True)`，否则机器狗等不支持 `unlock` 的成员会在批量结果中返回 `unsupported_command`。高级计划编排入口为 `Plan(device)`，通用能力由 `DevicePlan` 承载，无人机返回 `DronePlan`，机器狗返回 `RobotDogPlan`；`Plan(fleet)` 返回 `FleetPlan`，纯无人机 Fleet 返回 `DroneFleetPlan`，纯机器狗 Fleet 返回 `RobotDogFleetPlan`。设备连接由 `device.connect()` 或 `fleet.connect()` 单独完成；`Plan(...)` 只声明连接完成后的动作计划。链式声明计划后由 `run()` 按队列顺序执行，并在每一步成功后进入下一步。`Waypoint` 用于描述航点位置、速度、朝向、到达半径、稳定时间和到点动作，`Route` 提供点到点/折线、多边形、圆形、椭圆、弧形、矩形网格、多边形面积覆盖、螺旋和走廊等常见航线生成器，`Route.survey_area(...)` 可基于本地多边形边界、扫描间距和扫描角度生成割草机式覆盖航线；圆形、椭圆、弧形、网格、面积覆盖、螺旋和走廊生成器都可通过 `action=WaypointAction.PHOTO` 等枚举为生成的每个航点设置到点动作，且会在需要时自动包含本地原点锚点，让设备先从当前位置进入图形轨迹。`Plan(drone).route(route)` 会执行单条航线，`Plan(drone).routes(routes)` 会按传入顺序执行多条航线，并发布 `navigation.route.started/completed`、`navigation.waypoint.started/reached/settled/action_requested` 等标准事件；拍照等业务动作应优先订阅 `WaypointSettledEvent`，在位置、高度和速度稳定后触发。航线可传 `max_duration_s` 设置最长正常执行秒数；达到该时长后 SDK 会停止航线并返回成功，`RouteCompletedEvent.progress.completion_reason` 和步骤响应的 `route_completion_reason` 均为 `duration_reached`。这与 `run(step_timeout_s=...)` 的异常超时不同；航线若提前飞完，会立即以 `route_finished` 成功结束。PX4 原生 Mission 和 SDK 平滑执行遵守相同语义。`examples/demo/fleet_follow_events.py` 直接使用该参数执行 B 机限时螺旋航线，不再在 demo 中实现航点控制循环。`examples/demo/drone_plan.py` 内置这些常见航线算法，默认在同一次计划中按顺序执行全部内置航线，也可以通过命令行参数选择 `point_to_point`、`polyline`、`circle_orbit`、`ellipse_orbit`、`arc_scan`、`grid_coverage`、`survey_area`、`spiral_search` 或 `corridor` 执行单条航线。`route(..., motion=RouteMotion(...))` 可为当前航线设置 `MotionExecutionMode` 执行策略和 SDK 平滑参数，默认 `AUTO` 会优先使用 PX4 Mission 等飞控原生航线能力，不可用时回退到 FleetDock SDK 侧 Offboard 平滑；`FLIGHT_CONTROLLER` 会强制使用飞控原生航线，不支持则失败；`SDK` 会强制使用水平加速度、减速度、前视时间、最小前视距离、到点稳定时间和稳定速度阈值等参数执行手写平滑。`motion` 只影响当前 `route(...)`，`routes(..., motion=...)` 只影响本次批量加入的航线，不会改变同一计划中的后续航线。PX4 Offboard 速度控制在未显式传入 yaw 时会保持当前遥测 yaw，避免无意中把机头拉回 0 度。`HeadingMode` 提供 `NONE`、`TANGENT`、`CENTER`、`FIXED` 等枚举值，`TANGENT` 会在航线中同步设置 yaw，让机头跟随航线切向；`wait_until_ready(...)` 用于起飞前等待定位、本地位置、Home 点和可解锁状态，减少 PX4 预检未完成时的 `COMMAND_DENIED`；`when(...)` 可注册运行期守卫条件，并通过 `then` 回调执行自定义处理，例如电量低时自动返航。`examples/demo/drone_base.py` 展示相同飞行意图，但不使用计划编排，而是直接使用 `drone.connect()`、`drone.unlock()`、`drone.takeoff()`、`drone.move()`、`drone.stop()` 和 `drone.return_to_launch()` 等基础指令完成高度确认、矩形航线、圆形航线和异常返航。
+基础 SDK 继续提供 `drone.unlock(force=False)`、`drone.takeoff(...)`、`drone.move(...)` 等立即执行方法；`unlock()` 默认执行标准解锁，开发者可在读取失败原因后显式调用 `drone.unlock(force=True)` 请求适配器支持的强制解锁。混编 `Fleet` 上推荐只直接执行通用能力，例如 `fleet.connect()`；解锁、起飞、返航等无人机专属动作应先筛选为 `fleet.drones()` 后再调用，例如 `fleet.drones().unlock(force=True)`，否则机器狗等不支持 `unlock` 的成员会在批量结果中返回 `unsupported_command`。高级计划编排入口为 `Plan(device)`，通用能力由 `DevicePlan` 承载，无人机返回 `DronePlan`，机器狗返回 `RobotDogPlan`；`Plan(fleet)` 返回 `FleetPlan`，纯无人机 Fleet 返回 `DroneFleetPlan`，纯机器狗 Fleet 返回 `RobotDogFleetPlan`。设备连接由 `device.connect()` 或 `fleet.connect()` 单独完成；`Plan(...)` 只声明连接完成后的动作计划。链式声明计划后由 `run()` 按队列顺序执行，并在每一步成功后进入下一步。`Waypoint` 用于描述航点位置、速度、朝向、到达半径、稳定时间和到点动作，`Route` 提供点到点/折线、多边形、圆形、椭圆、弧形、矩形网格、多边形面积覆盖、螺旋和走廊等常见航线生成器，`Route.survey_area(...)` 可基于本地多边形边界、扫描间距和扫描角度生成割草机式覆盖航线；圆形、椭圆、弧形、网格、面积覆盖、螺旋和走廊生成器都可通过 `action=WaypointAction.PHOTO` 等枚举为生成的每个航点设置到点动作，且会在需要时自动包含本地原点锚点，让设备先从当前位置进入图形轨迹。`Plan(drone).route(route)` 会执行单条航线，`Plan(drone).routes(routes)` 会按传入顺序执行多条航线，并发布 `navigation.route.started/completed`、`navigation.waypoint.started/reached/settled/action_requested` 等标准事件；拍照等业务动作应优先订阅 `WaypointSettledEvent`，在位置、高度和速度稳定后触发。航线可传 `max_duration_s` 设置最长正常执行秒数；达到该时长后 SDK 会停止航线并返回成功，`RouteCompletedEvent.progress.completion_reason` 和步骤响应的 `route_completion_reason` 均为 `duration_reached`。这与 `run(step_timeout_s=...)` 的异常超时不同；航线若提前飞完，会立即以 `route_finished` 成功结束。PX4 原生 Mission 和 SDK 平滑执行遵守相同语义。`examples/demo/fleet_follow_events.py` 直接使用该参数执行 B 机限时螺旋航线，不再在 demo 中实现航点控制循环。`examples/demo/drone_plan.py` 内置这些常见航线算法，默认在同一次计划中按顺序执行全部内置航线，也可以通过命令行参数选择 `point_to_point`、`polyline`、`circle_orbit`、`ellipse_orbit`、`arc_scan`、`grid_coverage`、`survey_area`、`spiral_search` 或 `corridor` 执行单条航线。`route(..., motion=RouteMotion(...))` 可为当前航线设置 `MotionExecutionMode` 执行策略和 SDK 平滑参数，默认 `AUTO` 会优先使用 PX4 Mission 等飞控原生航线能力，不可用时回退到 FleetDock SDK 侧 Offboard 平滑；`FLIGHT_CONTROLLER` 会强制使用飞控原生航线，不支持则失败；`SDK` 会强制使用水平加速度、减速度、前视时间、最小前视距离、到点稳定时间和稳定速度阈值等参数执行手写平滑。`motion` 只影响当前 `route(...)`，`routes(..., motion=...)` 只影响本次批量加入的航线，不会改变同一计划中的后续航线。PX4 Offboard 速度控制在未显式传入 yaw 时会保持当前遥测 yaw，避免无意中把机头拉回 0 度。`HeadingMode` 提供 `NONE`、`TANGENT`、`CENTER`、`FIXED` 等枚举值，`TANGENT` 会在航线中同步设置 yaw，让机头跟随航线切向；`wait_until_ready(...)` 默认等待适配器可用的本地或全球定位起飞链路，也可显式追加全球定位或可解锁要求，减少 PX4 预检未完成时的 `COMMAND_DENIED`；`when(...)` 可注册运行期守卫条件，并通过 `then` 回调执行自定义处理，例如电量低时自动返航。`examples/demo/drone_base.py` 展示相同飞行意图，但不使用计划编排，而是直接使用 `drone.connect()`、`drone.unlock()`、`drone.takeoff()`、`drone.move()`、`drone.stop()` 和 `drone.return_to_launch()` 等基础指令完成高度确认、矩形航线、圆形航线和异常返航。
+
+> 0.4.0 Demo 调整：`examples/demo/drone_plan.py` 已收敛为可直接复制的本地圆形航线与安全降落短示例，
+> 不再内置或通过命令行选择全部航线；更多标准航线生成器统一由 `examples/quickstart/09_routes.py` 展示。
+
 限时航线可在同一个 `route(...)` 调用中用 `timeout_s` 设置异常超时；未传时才沿用 `run(step_timeout_s=...)`。因此长时间巡航推荐同时声明 `max_duration_s=300` 和略大的 `timeout_s=330`。
 
 `Plan.parallel(..., failure_policy="wait_all")` 默认等待全部子计划结束后汇总结果；显式使用 `failure_policy="fail_fast"` 时，首个失败子计划会触发其它子计划的协作取消信号，并调用各子计划的通用安全停止动作。由 fail-fast 引起的后续取消不会覆盖最初失败原因，顶层结果仍保持 `TaskStatus.FAILED`，便于上层按失败而不是普通取消处理。
 
-`Fleet` 用于把多台标准设备组成设备编队，成员可以混合无人机、机器狗和后续设备。`fleet.drones()`、`fleet.robot_dogs()`、`fleet.by_product(...)`、`fleet.by_capability(...)`、`fleet.by_id(...)`、`fleet.by_name(...)`、`fleet.by_category(...)`、`fleet.with_tag(...)`、`fleet.with_metadata(...)` 和 `fleet.where(...)` 都会返回新的 Fleet 视图，但不会复制设备对象。`Plan(fleet)` 会对 Fleet 成员批量执行通用动作；步骤之间串行，同一步内默认并发作用于所有成员。筛选后的 Fleet 可以继续使用同一个 `Plan(...)` 入口，例如先执行 `fleet.connect()`，再执行 `Plan(fleet.drones()).unlock().takeoff(20).run()`；混合 Fleet 推荐使用同一个根计划切换作用域，例如 `Plan(fleet).for_drones().unlock().root().for_robot_dogs().stand().root().run()`，其中 `root()` 只返回根 `FleetPlan` 继续声明后续步骤，不是执行边界。多条独立计划需要并行时使用 `Plan.parallel(Plan(fleet.drones()).route(air_route), Plan(fleet.robot_dogs()).route(ground_route)).run()`，返回 `ParallelTaskResult` 汇总各子计划结果；单个根 `FleetPlan` 内的步骤按声明顺序串行，同一步内对目标作用域成员并发。`fleet.events` 与 `device.events` 使用同一个 `EventType` 和同一种 `DeviceEvent` 回调参数；Fleet 只增加来源过滤能力。例如 `fleet.events.on(EventType.BATTERY_UPDATED, handler, device=drone)` 直接按设备对象订阅，无需维护设备 ID；`device` 也可以传设备序列或筛选后的 Fleet 视图。`device_type`、`product` 和 `predicate` 可继续用于能力范围和业务条件过滤。事件中的 `event.source.device_id`、`instance_id` 等来源字段仅用于日志、追踪和序列化，不作为订阅关系的必需配置。Fleet 事件流会为每台成员设备只建立一条底层订阅，避免多个上层订阅重复绑定设备事件。`examples/demo/fleet_plan.py` 对齐 `examples/run_dev_multi.bat` 默认三机端口 `14555`、`14556`、`14557`，先批量连接和起飞，订阅并每 5 秒打印一次每台无人机的全球位置和高度摘要，再用 `Plan.parallel(...)` 让三架无人机执行带横向偏移的各自航线，最后批量返航。`examples/demo/fleet_follow_events.py` 的事件摘要同样会限频打印每台无人机的经纬度、绝对高度、相对高度和本地坐标。
+`Fleet` 用于把多台标准设备组成设备编队，成员可以混合无人机、机器狗和后续设备。`fleet.drones()`、`fleet.robot_dogs()`、`fleet.by_product(...)`、`fleet.by_capability(...)`、`fleet.by_id(...)`、`fleet.by_name(...)`、`fleet.by_category(...)`、`fleet.with_tag(...)`、`fleet.with_metadata(...)` 和 `fleet.where(...)` 都会返回新的 Fleet 视图，但不会复制设备对象。`Plan(fleet)` 会对 Fleet 成员批量执行通用动作；步骤之间串行，同一步内默认并发作用于所有成员。筛选后的 Fleet 可以继续使用同一个 `Plan(...)` 入口，例如先执行 `fleet.connect()`，再执行 `Plan(fleet.drones()).wait_until_ready().takeoff(20).ensure_land().run()`；混合 Fleet 推荐使用同一个根计划切换作用域，例如 `Plan(fleet).for_drones().unlock().root().for_robot_dogs().stand().root().run()`，其中 `root()` 只返回根 `FleetPlan` 继续声明后续步骤，不是执行边界。多条独立计划需要并行时使用 `Plan.parallel(Plan(fleet.drones()).route(air_route), Plan(fleet.robot_dogs()).route(ground_route)).run()`，返回 `ParallelTaskResult` 汇总各子计划结果；单个根 `FleetPlan` 内的步骤按声明顺序串行，同一步内对目标作用域成员并发。`fleet.events` 与 `device.events` 使用同一个 `EventType` 和同一种 `DeviceEvent` 回调参数；Fleet 只增加来源过滤能力。例如 `fleet.events.on(EventType.BATTERY_UPDATED, handler, device=drone)` 直接按设备对象订阅，无需维护设备 ID；`device` 也可以传设备序列或筛选后的 Fleet 视图。`device_type`、`product` 和 `predicate` 可继续用于能力范围和业务条件过滤。事件中的 `event.source.device_id`、`instance_id` 等来源字段仅用于日志、追踪和序列化，不作为订阅关系的必需配置。Fleet 事件流会为每台成员设备只建立一条底层订阅，避免多个上层订阅重复绑定设备事件。Fleet 跟随只有在所有成员具备全球位置，或通过 `DeviceMetadata.local_frame_id` 明确声明共享 VIO/动捕/地图原点时才会开始；仅仅同为 `LOCAL_NED` 不代表多台 PX4 的 EKF 原点相同。`examples/demo/fleet_plan.py` 对齐 `examples/run_dev_multi.bat` 默认三机端口 `14555`、`14556`、`14557`，先批量连接和起飞，再用 `Plan.parallel(...)` 执行逐机偏移航线，最后以不依赖 Home 的批量降落收尾。`examples/demo/fleet_follow_events.py` 的事件摘要同样会限频打印每台无人机的经纬度、绝对高度、相对高度和本地坐标。
 
 `Plan(device, interceptors=[handler])` 可注册任务步骤 Hook。每个 Hook 会收到 `TaskStepHookEvent`，并在 `BEFORE_STEP`、`AFTER_STEP` 和 `ON_STEP_ERROR` 阶段实时触发；返回 `None` 表示只监听，返回 `TaskStepHookDecision.replace_params(...)`、`replace_result(...)`、`skip(...)` 或 `fail(...)` 可显式调整当前步骤。Fleet 计划会同时产生 `scope="fleet"` 的批量步骤事件和带 `device_id` 的成员步骤事件。`examples/demo/fleet_plan.py` 使用该入口实时打印每个执行步骤，任务结束后再输出最终结果汇总。
 
@@ -826,7 +941,9 @@ fleet.connect()
 drone_fleet.unlock()
 ```
 
-高级任务默认要求通过标准状态遥测确认关键动作完成，例如 `takeoff(altitude=10)` 必须看到相对高度达到目标高度减去 `tolerance(...)` 后才进入下一步；如果只飞到 8 米，任务层会按 `climb_speed(...)` 在等待期间持续补高，直到达标或步骤超过 `timeout(...)`。状态确认类步骤统一使用 `timeout(...)` 作为失败边界，不再用补偿次数判断失败。起飞步骤会先给 PX4 原生起飞命令一个短暂起飞窗口，再根据相对高度和 in_air 状态决定是否发送补高速度命令，避免刚发送起飞就立刻切到补偿控制。PX4 执行返航、悬停或全局航点前会先退出 Offboard；计划中的 `return_to_launch()` 如果已确认设备在空中，会等待遥测显示落地或解除解锁后再结束，避免下一次运行接上未完成的返航状态。如果 armed、相对高度、in_air 等必要状态暂时还没到，任务会在 `timeout(...)` 内等待遥测出现，不会因为首次启动遥测延迟立刻失败；如果最终仍缺少必要状态或无法达标，任务会超时失败，而不是只凭命令发送成功继续执行。`on_failed(handler)` 可统一处理失败、异常、超时或守卫触发。需要底层命令式控制时，仍可直接使用基础 SDK 方法。
+高级任务默认要求通过标准状态遥测确认关键动作完成。PX4 `takeoff(altitude=10)` 由适配器闭环确认目标高度，不再由通用任务层在原生 Takeoff 后盲目发送速度补偿；旧客户端或其他适配器尚未实现物理起飞协议时，任务层保持兼容的标准命令与遥测确认路径。状态确认类步骤统一使用 `timeout(...)` 作为失败边界。PX4 执行返航、悬停或全局航点前会退出活动的本地控制；计划中的 `land()` 会在 `in_air=False`、标准落地状态为 `on_ground`/`landed` 或设备解除解锁任一条件成立时确认结束，避免单一 `in_air` 遥测滞后导致实体已经落地但任务仍持续等待。`return_to_launch()` 如果已确认设备在空中，会等待遥测显示落地或解除解锁后再结束。如果 armed、相对高度、in_air 等必要状态暂时还没到，任务会在 `timeout(...)` 内等待遥测出现；最终仍缺少状态或无法达标时明确失败。`on_failed(handler)` 可统一处理失败、异常、超时或守卫触发。需要底层即时命令时，仍可直接使用基础 SDK 方法。
+即时 `StandardCommand.timeout_s` 会限制 PX4/MAVSDK 命令等待并在超时时返回 `COMMAND_TIMEOUT`；
+它与 Plan 的物理状态确认超时相互独立。
 公共 SDK 方法优先提供中文 docstring，开发者在 IDE 中查看 `Plan(drone).speed(...)`、`drone.takeoff(...)`、`device.events.on(...)` 等入口时，可以直接看到参数单位、执行语义和返回结果说明。
 
 公共枚举及其成员同样提供中文说明，包括标准命令、能力、产品、固件、坐标系、事件类型、任务状态、运动策略、航点动作和航线模式，方便开发者在 IDE 和源码中直接理解语义、单位及适用场景。
@@ -855,7 +972,17 @@ FleetDock 包要求 Python 3.11 或更高版本；本仓库本地调试优先使
 conda create -n fleetdock python=3.12 pip
 conda activate fleetdock
 pip install -e .
-unittest discover -s tests
+python -m unittest discover -s tests
+```
+
+开发 WS 服务和客户端时额外安装并测试独立包：
+
+```powershell
+python -m pip install -e packages/fleetdock-server
+python -m unittest discover -s packages/fleetdock-server/tests
+cd packages/fleetdock-js
+npm install
+npm test
 ```
 
 新电脑可直接按用途选择聚合安装入口；当前聚合安装不包含尚未实现真机适配器的 Unitree SDK：
@@ -903,21 +1030,25 @@ examples\run_dev.bat
 examples\run_dev_multi.bat
 ```
 
-`examples/run_dev.bat` 和 `examples/run_dev_multi.bat` 会在启动时把 Windows 控制台切换到 UTF-8 代码页，避免中文提示乱码。脚本会读取本机私有的 `examples/env.bat`；可以复制 `examples/env.example.bat` 为 `examples/env.bat` 后按本机路径修改。其中 `AIRSIM_EXE`、`PROJECTAIRSIM_EXAMPLES_DIR`、`PROJECTAIRSIM_SRC_DIR`、`PX4_ROOT_WSL` 和 `PX4_BUILD_DIR_WSL` 可由本机配置覆盖；`prepare_projectairsim_drone.py` 在 ProjectAirSim 与 FleetDock 位于同一父目录时也能自动推导两个 Project AirSim Python 路径，避免 Conda 子进程缺少路径变量时提前退出。`CONDA_BAT`、`CONDA_NAME`、`WSL_DISTRO`、`AIRSIM_STARTUP_WAIT_S`、`PX4_SOCKET`、`PX4_READY_TIMEOUT_S`、`FLEETDOCK_CAMERA_STREAM_URI` 和 MAVLink 端口、速率参数可以在 `examples/env.bat` 中覆盖；未设置时脚本使用通用默认值。
+`examples/run_dev.bat` 和 `examples/run_dev_multi.bat` 会在启动时把 Windows 控制台切换到 UTF-8 代码页，避免中文提示乱码。脚本会读取本机私有的 `examples/env.bat`；可以复制 `examples/env.example.bat` 为 `examples/env.bat` 后按本机路径修改，所有支持覆盖的环境变量及默认值示例均集中列在该模板中。其中 `AIRSIM_EXE`、`PROJECTAIRSIM_EXAMPLES_DIR`、`PROJECTAIRSIM_SRC_DIR`、`PX4_ROOT_WSL` 和 `PX4_BUILD_DIR_WSL` 可由本机配置覆盖；`prepare_projectairsim_drone.py` 在 ProjectAirSim 与 FleetDock 位于同一父目录时也能自动推导两个 Project AirSim Python 路径，避免 Conda 子进程缺少路径变量时提前退出。启动前不再依赖固定的 AirSim 进程名，而是直接从 `AIRSIM_EXE` 推导安装目录，并结束可执行文件实际路径位于该目录及其子目录中的旧进程。清理脚本拒绝空路径和位于磁盘根目录的 `AIRSIM_EXE`，避免扩大误杀范围。`CONDA_BAT`、`CONDA_NAME`、`WSL_DISTRO`、`AIRSIM_STARTUP_WAIT_S`、`PX4_SOCKET`、`PX4_READY_TIMEOUT_S`、`FLEETDOCK_CAMERA_STREAM_URI` 和 MAVLink 端口、速率参数可以在 `examples/env.bat` 中覆盖；未设置时脚本使用通用默认值。
 
 Project AirSim 0.2.0 的 Python client 默认会在当前工作目录创建 `projectairsim_client.log`。FleetDock 的 Project AirSim 初始化脚本和传感器 demo 会提前把该依赖配置为仅向控制台输出日志，因此运行这些示例不会生成客户端日志文件。
 
 LiDAR 螺旋避障 demo 默认在 18 米相对高度执行，保留 Neighborhood 场景中的实际低空绕障过程；起飞后会重新采集覆盖完整水平扫描周期的点云，并使用与 SDK route 最小前视距离一致的安全出口探测段。候选出口还会交给 route 使用的同一避障管理器复核；螺旋航线先沿验证过的出口直飞到入口半径，再开始向外旋转，避免半径为零处的高曲率首段立即偏离安全走廊。运行时使用 0.7 米机体半径和额外 1.5 米净空判断障碍，遇险会插入临时绕行点，并从障碍物后方重新接回尚未完成的螺旋，而不会折返到障碍前方；水平侧绕不可用时，无人机可短暂升降越障，随后回到 18 米任务高度继续原螺旋。规划器单帧暂时没有安全候选时会先悬停并等待新点云重试，不会立即返航；持续无路可走超过安全等待窗口时才执行 fallback。3 米航点间距使用 2 米到达半径，避免 PX4 在最终航点附近反复修正直至超时。
 
-单机和多机启动现在共用 `examples/projectairsim/` 中的机器人 Profile 和场景模板。`basic` 保留现有轻量相机，`video` 提供独立 640×480 前向 RGB 控制视频、保留仿真窗口的第三人称 `Chase` 视角并关闭 `DownCamera`，`depth` 增加前向 RGB/米制透视深度相机，`stereo` 增加基线 0.12 米的前向双目相机，`lidar` 增加 16 线、100 米量程的 `lidar1`，`radar` 增加 150 米量程的前向 Radar。控制器仿真推荐使用 `basic,video`；可见窗口可通过 `AIRSIM_ARGS=-ResX=1280 -ResY=720 -Windowed -ForceRes` 固定为 1280×720，仅通过 RTSP 使用时才设置 `AIRSIM_ARGS=-RenderOffScreen -NoVSync`；需要深度数据时仍应显式选择 `depth`。推荐使用 `PROJECTAIRSIM_SENSOR_PROFILES=stereo,lidar` 这类显式组合按需启用传感器模块；环境层只负责发布原始数据，不提供会暗示已完成融合的聚合预设。旧的单值 `PROJECTAIRSIM_ROBOT_PROFILE` 继续兼容。Profile 只描述相对上游 `robot_quadrotor_px4_sitl_wsl2.jsonc` 新增的传感器和覆盖项，启动时再生成完整 Project AirSim 机器人配置，避免在 FleetDock 中复制整份上游机型。未知或重复 Profile、重复传感器 ID 和循环引用会在加载场景前报错。可以通过 `PROJECTAIRSIM_ROBOT_CONFIG_PATH` 或 `PROJECTAIRSIM_SCENE_CONFIG_PATH` 使用自定义配置；自定义机器人文件需要多层组合时应在 JSONC 中声明 `include-profiles`。详细字段和用法见 `examples/projectairsim/README.md`。
+单机和多机启动现在共用 `examples/projectairsim/` 中的机器人 Profile 和场景模板。`basic` 保留现有轻量相机，`video` 提供独立 960×540、30 FPS、16:9 前向 RGB 控制视频，宽高比与控制器画面区一致，媒体链路仍只保留最新一帧；该 Profile 同时保留仿真窗口的第三人称 `Chase` 视角并关闭 `DownCamera`。`depth` 增加前向 RGB/米制透视深度相机，`stereo` 增加基线 0.12 米的前向双目相机，`lidar` 增加 16 线、100 米量程的 `lidar1`，`radar` 增加 150 米量程的前向 Radar。控制器仿真推荐使用 `basic,video`；可见窗口可通过 `AIRSIM_ARGS=-ResX=1280 -ResY=720 -Windowed -ForceRes` 固定为 1280×720，仅通过 RTSP 使用时才设置 `AIRSIM_ARGS=-RenderOffScreen -NoVSync`；需要深度数据时仍应显式选择 `depth`。推荐使用 `PROJECTAIRSIM_SENSOR_PROFILES=stereo,lidar` 这类显式组合按需启用传感器模块；环境层只负责发布原始数据，不提供会暗示已完成融合的聚合预设。旧的单值 `PROJECTAIRSIM_ROBOT_PROFILE` 继续兼容。Profile 只描述相对上游 `robot_quadrotor_px4_sitl_wsl2.jsonc` 新增的传感器和覆盖项，启动时再生成完整 Project AirSim 机器人配置，避免在 FleetDock 中复制整份上游机型。未知或重复 Profile、重复传感器 ID 和循环引用会在加载场景前报错。`run_dev.bat` 和 `run_dev_multi.bat` 中的 `PROJECTAIRSIM_SCENE_CONFIG_PATH` 默认为空，此时使用 `examples/projectairsim/scenes/scene_px4_neighborhood.jsonc`；将其设为自定义场景配置的绝对路径即可改用指定文件。也可以通过 `PROJECTAIRSIM_ROBOT_CONFIG_PATH` 使用自定义机器人配置；自定义机器人文件需要多层组合时应在 JSONC 中声明 `include-profiles`。详细字段和用法见 `examples/projectairsim/README.md`。
 
-`PX4_WINDOWS_HOST_IP` 和 `PX4_SIM_HOST_ADDR` 如果已经在环境变量或 `examples/env.bat` 中配置，`examples/run_dev.bat` 会直接尊重该配置；未配置 `PX4_WINDOWS_HOST_IP` 时才从 WSL 默认路由自动探测 Windows 主机 IP，并在未配置 `PX4_SIM_HOST_ADDR` 时复用该地址。单机和多机启动脚本默认把仿真 GPS Home 设在重庆轨道交通大学城站附近：WGS84 纬度 `29.61002`、经度 `106.30514`，近似绝对海拔 `293.0` 米（AMSL）。可在 `examples/env.bat` 中覆盖 `PROJECTAIRSIM_HOME_LATITUDE_DEG`、`PROJECTAIRSIM_HOME_LONGITUDE_DEG` 和 `PROJECTAIRSIM_HOME_ALTITUDE_M`；启动脚本会生成带 `home-geo-point` 的 FleetDock 场景文件，保证 `GpsPoint`、Home 点和本地坐标原点可复现。Project AirSim 场景中无人机默认朝向为 0°，启动脚本通过 `PX4_INITIAL_HEADING_DEG=0` 对齐 PX4 估计器航向并等待预检通过，避免地理位置改变后航向创新检查持续阻止解锁；可在 `examples/env.bat` 中覆盖该角度，设为空值则跳过对齐。脚本启动 AirSim 后会等待 `AIRSIM_STARTUP_WAIT_S`，再在独立且保持打开的控制台中启动 PX4。随后沿用原有并行启动方式：独立窗口只等待 PX4 命令 socket 后运行 `examples/prepare_projectairsim_drone.py`，主窗口同时由 `examples/start_px4_mavlink.bat` 等待 commander 完整就绪、对齐航向并启动指向 Windows MAVSDK 监听端口的 MAVLink 输出。如果 PX4 异常退出，控制台会保留错误信息。`examples/demo/fleet_follow_formation.py` 会在连接 PX4 前只读检查 Project AirSim topic，并等待 `SceneFleetDock3Drones` 的三个机器人位姿出现，避免三机场景尚未加载时继续执行。`examples/mavlink_random_route_rtl.py` 只负责 MAVSDK 飞行流程，并会通过有界本地 NED 位置目标上升，超过 10 米后以当前位置为中心，随机选择圆形、三角形、正方形、矩形或梯形航线，闭合图形并回到中心后返航；如果 RTL 不可用则直接降落。
+Web 仿真 Demo 默认以 8000 kbit/s、30 FPS 编码场景当前选中的 RGB 控制视频，保持原始分辨率，使用 OpenH264 中等复杂度并由 GStreamer 无转码发布到 WHIP。Demo 顶部显式列出目标码率、帧率、GOP、编码复杂度、实时丢帧、RTSP 抖动缓冲和超时丢包参数，对应的 `FLEETDOCK_CAMERA_*`、`FLEETDOCK_WHIP_*` 环境变量可按 CPU 与网络条件覆盖。码率是编码目标值，SRS 上观察到的实际上行会随画面复杂度变化，不应把静止场景低于目标码率直接判断为分辨率下降。
+
+Windows 通用无人机服务入口 `packages/fleetdock-server/examples/start_drone_server.bat` 会把这些环境变量展开为清晰的命令行参数，再调用 `python packages/fleetdock-server/src/fleetdock-cli/drone_server.py <命令行参数>`。真机、仿真器或独立媒体服务器必须预先提供 `FLEETDOCK_CAMERA_STREAM_URI` 指向的 RTSP 流；该 Python 封装只复用正式无人机服务入口启动 PX4、WS 和可选媒体转发，不创建 RTSP Server 或 Project AirSim Bridge。仿真环境可先在一个终端运行 `packages\fleetdock-server\examples\start_projectairsim_rtsp_bridge.bat`，再在另一个终端运行 `packages\fleetdock-server\examples\start_drone_server.bat`；两者默认使用同一个本地 RTSP 地址。
+
+启动脚本会从 WSL 默认路由自动检测 Windows 主机 IP，最多重试 10 秒；仍未取得默认路由时，如果 `examples/env.bat` 已配置 `PX4_WINDOWS_HOST_IP`，则使用该值兜底，否则明确报错退出。成功检测后，脚本会将 `PX4_WINDOWS_HOST_IP` 和 `PX4_SIM_HOST_ADDR` 统一为检测值；不同的手工配置只会触发提示。单机和多机启动脚本默认把仿真 GPS Home 设在重庆轨道交通大学城站附近：WGS84 纬度 `29.61002`、经度 `106.30514`，近似绝对海拔 `293.0` 米（AMSL）。可在 `examples/env.bat` 中覆盖 `PROJECTAIRSIM_HOME_LATITUDE_DEG`、`PROJECTAIRSIM_HOME_LONGITUDE_DEG` 和 `PROJECTAIRSIM_HOME_ALTITUDE_M`；启动脚本会生成带 `home-geo-point` 的 FleetDock 场景文件，保证 `GpsPoint`、Home 点和本地坐标原点可复现。Project AirSim 场景中无人机默认朝向为 0°，启动脚本通过 `PX4_INITIAL_HEADING_DEG=0` 对齐 PX4 估计器航向并等待预检通过，避免地理位置改变后航向创新检查持续阻止解锁；可在 `examples/env.bat` 中覆盖该角度，设为空值则跳过对齐。脚本启动 AirSim 后会等待 `AIRSIM_STARTUP_WAIT_S`，再在独立且保持打开的控制台中启动 PX4。随后沿用原有并行启动方式：独立窗口只等待 PX4 命令 socket 后运行 `examples/prepare_projectairsim_drone.py`，主窗口同时由 `examples/start_px4_mavlink.bat` 等待 commander 完整就绪、对齐航向并启动指向 Windows MAVSDK 监听端口的 MAVLink 输出。如果 PX4 异常退出，控制台会保留错误信息。`examples/demo/fleet_follow_formation.py` 会在连接 PX4 前只读检查 Project AirSim topic，并等待 `SceneFleetDock3Drones` 的三个机器人位姿出现，避免三机场景尚未加载时继续执行。`examples/mavlink_random_route_rtl.py` 只负责 MAVSDK 飞行流程，并会通过有界本地 NED 位置目标上升，超过 10 米后以当前位置为中心，随机选择圆形、三角形、正方形、矩形或梯形航线，闭合图形并回到中心后返航；如果 RTL 不可用则直接降落。
 
 Project AirSim 的 `depth` 和 `stereo` Profile 默认把前向相机安装在机体系 `x=0.45 m`，位于 PX4
 四旋翼前桨盘最前缘之外，因此控制器和摄像头调试窗口不会再把前桨拍入画面；自定义安装位置、朝向和
 FOV 的方法见 `examples/projectairsim/README.md`。
 
-`examples/run_dev_multi.bat` 用于按 `MULTI_DRONE_COUNT` 启动多架 PX4 SITL 无人机的开发环境，默认启动 3 架，并按 `MULTI_DRONE_NAME_PREFIX` 自动生成 `Drone1`、`Drone2`、`Drone3` 等名称。脚本会从所选机器人 Profile 自动生成对应数量的机器人配置，各实例依次使用模拟器 TCP 端口 `4560`、`4561`、`4562`。未配置逐机组合时，`MULTI_PROJECTAIRSIM_SENSOR_DRONES` 默认是 `Drone1`，避免所有无人机同时发布高带宽图像和点云；可以设为 `all`，或设为 `Drone1,Drone3` 这类逗号分隔名称。推荐使用 `MULTI_PROJECTAIRSIM_SENSOR_PROFILES=Drone1=stereo+lidar;Drone2=depth` 为不同无人机直接分配组合，未列出的成员使用 `basic`，且该变量优先于旧式感知无人机列表。脚本默认让 `Drone1` 保持单机示例的出生点，并把 `Drone2`、`Drone3` 放在 Drone1 前方 12 米、左右各 4 米的位置，形成便于 Drone1 视角观察的前导双机队形；可通过 `MULTI_PROJECTAIRSIM_SPAWN_SPACING_M` 覆盖更多无人机的兜底横向间距。启动前会按进程名清理旧 PX4 实例、旧 AirSim 进程和残留的 `mavsdk_server.exe`；PX4 清理会先尝试正常终止，若仍未退出则强制结束。默认就绪检测窗口为 180 秒。多机流程沿用原有顺序：等待各实例命令 socket、设置 `MAV_SYS_ID`、异步加载 Project AirSim 场景，再逐实例等待 commander 并启动 MAVLink 输出；预加载阶段显式使用 socket-only 检查，避免改变原有并行启动关系。各实例按端口基数暴露 MAVSDK 监听端口 `14555`、`14556`、`14557`。PX4 多实例命令统一使用 CLI 的 `--instance N` 参数路由到目标进程，启动 MAVLink 输出时只停止当前实例的目标本地端口，不使用 `stop-all`，避免启动后续无人机时清掉前面实例的链路。可在 `examples/env.bat` 中覆盖 `MULTI_DRONE_COUNT`、`MULTI_DRONE_NAME_PREFIX`、`MULTI_PROJECTAIRSIM_SCENE_NAME`、`PROJECTAIRSIM_SENSOR_PROFILES`、`MULTI_PROJECTAIRSIM_SENSOR_PROFILES`、`MULTI_PROJECTAIRSIM_SENSOR_DRONES`、`MULTI_PX4_SIM_MODEL`、`MULTI_PX4_SOCKET_PREFIX`、`MULTI_MAVLINK_LOCAL_PORT_BASE`、`MULTI_MAVLINK_REMOTE_PORT_BASE` 和 `MULTI_PX4_DEFAULT_GCS_PORT_BASE`。`examples/demo/fleet_plan.py` 会分段打印 Fleet 连接、ready、解锁和起飞状态，并把每台无人机的业务 ID、高度和本地坐标分别打印在独立行，避免窄终端裁切掉其他成员；航线参数日志最多每 10 秒打印一次，避免并行计划重复生成时刷屏。在当前 Project AirSim + PX4 SITL 多机场景中，脚本会先用 FleetDock 标准遥测等待本地位置和 Home 点就绪，再通过 `fleet.drones().unlock()` 只对无人机成员尝试标准解锁，必要时显式调用 `fleet.drones().unlock(force=True)` 请求 SDK 侧强制解锁，随后通过 `fleet.drones().takeoff(...)` 发送标准 SDK 起飞命令，并继续用 SDK 速度控制补高到目标高度，确认容差为 2 米以适配 PX4 多机 SITL 的实际悬停高度；航线阶段会把公共航线缩放到 55%，三架无人机执行相同的本地航线以保持出生时的前导队形，并使用 `25/27/27` 米高度层增加安全余量，便于从 Drone1 附近视角同时观察三架无人机。传入 `--takeoff-only` 时，脚本会在全部无人机达到目标高度后结束，不继续执行航线。如果某台无人机缺少 Home、本地位置或起飞高度遥测，控制台会持续显示对应设备的缺项。
+`examples/run_dev_multi.bat` 用于按 `MULTI_DRONE_COUNT` 启动多架 PX4 SITL 无人机的开发环境，默认启动 3 架，并按 `MULTI_DRONE_NAME_PREFIX` 自动生成 `Drone1`、`Drone2`、`Drone3` 等名称。脚本会从所选机器人 Profile 自动生成对应数量的机器人配置，各实例依次使用模拟器 TCP 端口 `4560`、`4561`、`4562`。未配置逐机组合时，`MULTI_PROJECTAIRSIM_SENSOR_DRONES` 默认是 `Drone1`，避免所有无人机同时发布高带宽图像和点云；可以设为 `all`，或设为 `Drone1,Drone3` 这类逗号分隔名称。推荐使用 `MULTI_PROJECTAIRSIM_SENSOR_PROFILES=Drone1=stereo+lidar;Drone2=depth` 为不同无人机直接分配组合，未列出的成员使用 `basic`，且该变量优先于旧式感知无人机列表。脚本默认让 `Drone1` 保持单机示例的出生点，并把 `Drone2`、`Drone3` 放在 Drone1 前方 12 米、左右各 4 米的位置，形成便于 Drone1 视角观察的前导双机队形；可通过 `MULTI_PROJECTAIRSIM_SPAWN_SPACING_M` 覆盖更多无人机的兜底横向间距。启动前会按进程名清理旧 PX4 实例和残留的 `mavsdk_server.exe`，并按可执行文件所在路径清理旧 AirSim 进程；PX4 清理会先尝试正常终止，若仍未退出则强制结束。默认就绪检测窗口为 180 秒。多机流程沿用原有顺序：等待各实例命令 socket、设置 `MAV_SYS_ID`、异步加载 Project AirSim 场景，再逐实例等待 commander 并启动 MAVLink 输出；预加载阶段显式使用 socket-only 检查，避免改变原有并行启动关系。各实例按端口基数暴露 MAVSDK 监听端口 `14555`、`14556`、`14557`。PX4 多实例命令统一使用 CLI 的 `--instance N` 参数路由到目标进程，启动 MAVLink 输出时只停止当前实例的目标本地端口，不使用 `stop-all`，避免启动后续无人机时清掉前面实例的链路。可在 `examples/env.bat` 中覆盖 `MULTI_DRONE_COUNT`、`MULTI_DRONE_NAME_PREFIX`、`MULTI_PROJECTAIRSIM_SCENE_NAME`、`PROJECTAIRSIM_SENSOR_PROFILES`、`MULTI_PROJECTAIRSIM_SENSOR_PROFILES`、`MULTI_PROJECTAIRSIM_SENSOR_DRONES`、`MULTI_PX4_SIM_MODEL`、`MULTI_PX4_SOCKET_PREFIX`、`MULTI_MAVLINK_LOCAL_PORT_BASE`、`MULTI_MAVLINK_REMOTE_PORT_BASE` 和 `MULTI_PX4_DEFAULT_GCS_PORT_BASE`。`examples/demo/fleet_plan.py` 会分段打印 Fleet 连接、ready 和起飞状态，并把每台无人机的业务 ID、高度和本地坐标分别打印在独立行，避免窄终端裁切掉其他成员；航线参数日志最多每 10 秒打印一次，避免并行计划重复生成时刷屏。在当前 Project AirSim + PX4 SITL 多机场景中，脚本会先用 FleetDock 标准遥测等待每台无人机的本地或全球定位链路就绪，再通过 `Plan(fleet.drones()).takeoff(...)` 让各成员自动选择底层起飞链路，并继续用 SDK 速度控制补高到目标高度，确认容差为 2 米以适配 PX4 多机 SITL 的实际悬停高度；航线阶段会把公共航线缩放到 55%，三架无人机执行相同的本地航线以保持出生时的前导队形，并使用 `25/27/27` 米高度层增加安全余量，便于从 Drone1 附近视角同时观察三架无人机。传入 `--takeoff-only` 时，脚本会在全部无人机达到目标高度后结束，不继续执行航线。如果某台无人机缺少可用定位链路或起飞高度遥测，控制台会持续显示对应设备的缺项。
 
 为避免重复启动时残留 socket 被误判为新实例已就绪，多机脚本会在旧进程结束后仅清理本次实例对应的 socket；设置 `MAV_SYS_ID` 前还会等待参数服务真正可用，并在短暂启动抖动时进行有限重试。场景加载和 MAVLink 启动顺序保持不变。
 

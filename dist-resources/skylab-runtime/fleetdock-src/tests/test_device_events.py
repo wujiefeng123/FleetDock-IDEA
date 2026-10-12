@@ -21,6 +21,43 @@ from fleetdock import (
 
 
 class DeviceEventStreamTest(unittest.TestCase):
+    def test_high_rate_telemetry_is_bounded_and_keeps_latest_event(self) -> None:
+        stream = DeviceEventStream(
+            EventSource("drone-001", "px4.generic", "drone", "Px4MavlinkAdapter"),
+            queue_capacity=2,
+        )
+        entered = threading.Event()
+        release = threading.Event()
+        received = []
+
+        def slow_handler(event) -> None:
+            received.append(event)
+            if len(received) == 1:
+                entered.set()
+                release.wait(1.0)
+
+        stream.on(EventType.ATTITUDE_UPDATED, slow_handler)
+        stream.publish(
+            EventType.ATTITUDE_UPDATED,
+            EventCategory.TELEMETRY,
+            {"roll_deg": 0.0, "pitch_deg": 0.0, "yaw_deg": 0.0},
+        )
+        self.assertTrue(entered.wait(1.0))
+        for yaw_deg in (1.0, 2.0, 3.0, 4.0):
+            stream.publish(
+                EventType.ATTITUDE_UPDATED,
+                EventCategory.TELEMETRY,
+                {"roll_deg": 0.0, "pitch_deg": 0.0, "yaw_deg": yaw_deg},
+            )
+
+        status = stream.status()
+        self.assertLessEqual(status.pending_events, status.queue_capacity + 1)
+        self.assertGreaterEqual(status.dropped_events, 2)
+        release.set()
+        self.assertTrue(stream.drain(timeout_s=1.0))
+        self.assertEqual(received[-1].attitude.yaw_deg, 4.0)
+        stream.close()
+
     def test_stream_delivers_all_events_in_order_and_isolates_handler_errors(self) -> None:
         stream = DeviceEventStream(
             EventSource(

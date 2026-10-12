@@ -1,0 +1,22 @@
+{
+  "name": "@fleetdock/client",
+  "version": "0.4.0",
+  "description": "FleetDock WebSocket JavaScript client",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "npm run build:sdk && npm run build:web",
+    "build:sdk": "tsc -p tsconfig.json",
+    "build:web": "vite build examples/web",
+    "web": "vite preview examples/web --host 127.0.0.1 --port 4173",
+    "web:dev": "npm run build:sdk && vite examples/web",
+    "test": "npm run build && vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.4"
+  }
+}

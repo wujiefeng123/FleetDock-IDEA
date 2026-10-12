@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleetdock.dev/protocol/v1/control.schema.json",
+  "title": "FleetDock control message",
+  "type": "object",
+  "required": ["version", "type"],
+  "properties": {
+    "version": { "const": 1 },
+    "type": {
+      "enum": [
+        "session.hello",
+        "control.acquire",
+        "control.release",
+        "manual.press",
+        "manual.release",
+        "manual.heartbeat",
+        "manual.release_all",
+        "manual.configure",
+        "command.submit"
+      ]
+    },
+    "request_id": { "type": "string", "minLength": 1 },
+    "device_id": { "type": "string", "minLength": 1 },
+    "control_id": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "action": {
+      "enum": [
+        "forward",
+        "backward",
+        "left",
+        "right",
+        "ascend",
+        "descend",
+        "yaw_left",
+        "yaw_right"
+      ]
+    },
+    "horizontal_speed_m_s": { "type": "number", "exclusiveMinimum": 0 },
+    "vertical_speed_m_s": { "type": "number", "exclusiveMinimum": 0 },
+    "yaw_rate_deg_s": { "type": "number", "exclusiveMinimum": 0 },
+    "command": { "type": "string", "minLength": 1 },
+    "params": { "type": "object" }
+  },
+  "additionalProperties": true
+}

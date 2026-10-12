@@ -41,7 +41,18 @@ def _load_gstreamer() -> tuple[Any, Any, Any, Any]:
 
 
 class _GStreamerMount:
-    def __init__(self, gst: Any, rtsp: Any, rtsp_server: Any, frame_rate_hz: float, bitrate_kbps: int) -> None:
+    def __init__(
+        self,
+        gst: Any,
+        rtsp: Any,
+        rtsp_server: Any,
+        frame_rate_hz: float,
+        bitrate_kbps: int,
+        *,
+        gop_frames: int | None = None,
+        encoder_complexity: str = "medium",
+        enable_frame_skip: bool = True,
+    ) -> None:
         self._gst = gst
         self._lock = RLock()
         self._appsrc: Any = None
@@ -53,7 +64,8 @@ class _GStreamerMount:
         self._rate_numerator = rate.numerator
         self._rate_denominator = rate.denominator
         self._duration_ns = max(1, round(1_000_000_000 / frame_rate_hz))
-        gop_size = max(1, round(frame_rate_hz))
+        gop_size = max(1, round(frame_rate_hz) if gop_frames is None else gop_frames)
+        frame_skip = str(enable_frame_skip).lower()
         self.factory = rtsp_server.RTSPMediaFactory()
         self.factory.set_shared(True)
         self.factory.set_latency(0)
@@ -62,8 +74,8 @@ class _GStreamerMount:
             "( appsrc name=source is-live=true block=false format=time max-buffers=1 leaky-type=downstream "
             "! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream "
             "! videoconvert ! video/x-raw,format=I420 "
-            f"! openh264enc bitrate={bitrate_kbps * 1_000} complexity=low usage-type=camera "
-            f"rate-control=bitrate gop-size={gop_size} enable-frame-skip=true "
+            f"! openh264enc bitrate={bitrate_kbps * 1_000} complexity={encoder_complexity} usage-type=camera "
+            f"rate-control=bitrate gop-size={gop_size} enable-frame-skip={frame_skip} "
             "! rtph264pay name=pay0 pt=96 config-interval=1 )"
         )
         self.factory.connect("media-configure", self._on_media_configure)
@@ -119,9 +131,6 @@ class _GStreamerMount:
             self._format_key = format_key
         buffer = self._gst.Buffer.new_allocate(None, len(data), None)
         buffer.fill(0, data)
-        # [UAV-IDE MODIFY] Project AirSim cameras commonly deliver below the configured
-        # encoder ceiling. Timestamp frames from their real arrival clock; incrementing by
-        # a fixed 30 FPS duration makes a 6 FPS source accumulate minutes of playback lag.
         now_ns = time.monotonic_ns()
         if self._clock_origin_ns is None:
             self._clock_origin_ns = now_ns
@@ -171,8 +180,26 @@ class _SharedGStreamerRtspServer:
             self._references -= 1
             return self._references == 0
 
-    def add_mount(self, path: str, frame_rate_hz: float, bitrate_kbps: int) -> _GStreamerMount:
-        mount = _GStreamerMount(self._gst, self._rtsp, self._rtsp_server, frame_rate_hz, bitrate_kbps)
+    def add_mount(
+        self,
+        path: str,
+        frame_rate_hz: float,
+        bitrate_kbps: int,
+        *,
+        gop_frames: int | None = None,
+        encoder_complexity: str = "medium",
+        enable_frame_skip: bool = True,
+    ) -> _GStreamerMount:
+        mount = _GStreamerMount(
+            self._gst,
+            self._rtsp,
+            self._rtsp_server,
+            frame_rate_hz,
+            bitrate_kbps,
+            gop_frames=gop_frames,
+            encoder_complexity=encoder_complexity,
+            enable_frame_skip=enable_frame_skip,
+        )
         with self._lock:
             if path in self._mounts:
                 raise RuntimeError(f"GStreamer RTSP path is already registered: {path}")
@@ -224,6 +251,9 @@ class GStreamerRtspPublisher:
         *,
         frame_rate_hz: float,
         bitrate_kbps: int,
+        gop_frames: int | None = None,
+        encoder_complexity: str = "medium",
+        enable_frame_skip: bool = True,
         startup_timeout_s: float,
     ) -> None:
         self._host = "::1" if host == "::1" else "127.0.0.1" if host in _LOCAL_HOSTS else host
@@ -231,6 +261,9 @@ class GStreamerRtspPublisher:
         self._path = path if path.startswith("/") else f"/{path}"
         self._frame_rate_hz = frame_rate_hz
         self._bitrate_kbps = bitrate_kbps
+        self._gop_frames = gop_frames
+        self._encoder_complexity = encoder_complexity
+        self._enable_frame_skip = enable_frame_skip
         self._startup_timeout_s = startup_timeout_s
         self._server: _SharedGStreamerRtspServer | None = None
         self._mount: _GStreamerMount | None = None
@@ -249,7 +282,14 @@ class GStreamerRtspPublisher:
                 _servers[key] = server
             server.acquire()
         try:
-            mount = server.add_mount(self._path, self._frame_rate_hz, self._bitrate_kbps)
+            mount = server.add_mount(
+                self._path,
+                self._frame_rate_hz,
+                self._bitrate_kbps,
+                gop_frames=self._gop_frames,
+                encoder_complexity=self._encoder_complexity,
+                enable_frame_skip=self._enable_frame_skip,
+            )
         except Exception:
             self._release_server(key, server)
             raise

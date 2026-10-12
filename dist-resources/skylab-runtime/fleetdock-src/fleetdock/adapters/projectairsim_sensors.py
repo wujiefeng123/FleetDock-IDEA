@@ -132,6 +132,9 @@ class _ProjectAirSimSensorBackend:
             if kind is None:
                 continue
             is_front_camera = native_sensor_id.lower().startswith("front")
+            camera_width_px, camera_height_px = (
+                (960, 540) if native_sensor_id == "FrontCamera" else (640, 480)
+            )
             sensor_id = native_sensor_id
             if any(item.sensor_id == sensor_id for item in descriptors):
                 sensor_id = f"{native_sensor_id}.{stream_name}"
@@ -158,8 +161,8 @@ class _ProjectAirSimSensorBackend:
                 ),
                 camera_intrinsics=(
                     CameraIntrinsics.from_horizontal_fov(
-                        640,
-                        480,
+                        camera_width_px,
+                        camera_height_px,
                         90.0,
                     )
                     if is_front_camera
@@ -177,9 +180,6 @@ class _ProjectAirSimSensorBackend:
             if stream_name == "scene_camera":
                 camera_topics[(native_sensor_id.lower(), stream_name)] = topic
 
-        # [UAV-IDE MODIFY] Project AirSim publishes the simulator-authoritative vehicle pose
-        # outside the sensors namespace. Expose it as an extension stream so HUD consumers do
-        # not infer attitude or local position from accelerometer, magnetometer, or first GNSS.
         actual_pose_topic = next(
             (topic for topic in sorted(robot_topics) if topic.endswith("/actual_pose")),
             None,
@@ -446,8 +446,6 @@ class _ProjectAirSimSensorBackend:
             if not handlers:
                 self._topic_handlers.pop(topic, None)
                 self._active_topics.discard(topic)
-                # [UAV-IDE MODIFY] Invalidate callbacks already queued by Project AirSim
-                # before a close/re-init cycle. A later subscription gets a new generation.
                 self._topic_generations[topic] = self._topic_generations.get(topic, 0) + 1
                 should_unsubscribe = True
         if should_unsubscribe:

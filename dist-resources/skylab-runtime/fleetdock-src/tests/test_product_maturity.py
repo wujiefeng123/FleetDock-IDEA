@@ -12,7 +12,7 @@ class ProductMaturityTests(unittest.TestCase):
         self.assertEqual(default_registry.get(ProductType.DJI_MATRICE_350_RTK).maturity, IntegrationMaturity.PLANNED)
 
     def test_package_version_matches_release(self) -> None:
-        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(__version__, "0.4.0")
 
 
 if __name__ == "__main__":

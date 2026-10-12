@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fleetdock"
-version = "0.3.0"
+version = "0.4.0"
 description = "用于统一协同控制无人机、机器狗和其他设备的通用 Python SDK。"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,7 +44,7 @@ projectairsim-rtsp = [
   "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
 ]
 vision = [
-  "numpy>=1.26.0",
+  "numpy>=1.26.0,<2.4",
   "opencv-python>=4.9.0",
   "Pillow>=10.0.0",
 ]
@@ -76,7 +76,7 @@ full-prod = [
   "projectairsim==0.2.0",
   "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
   "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
-  "numpy>=1.26.0",
+  "numpy>=1.26.0,<2.4",
   "opencv-python>=4.9.0",
   "Pillow>=10.0.0",
 ]
@@ -87,7 +87,7 @@ full-dev = [
   "projectairsim==0.2.0",
   "gstreamer-meta>=1.28.0,<1.29; platform_system == 'Windows' or platform_system == 'Darwin'",
   "PyGObject>=3.50.0,<4; platform_system == 'Linux'",
-  "numpy>=1.26.0",
+  "numpy>=1.26.0,<2.4",
   "opencv-python>=4.9.0",
   "Pillow>=10.0.0",
   "build>=1.5.0",

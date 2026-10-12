@@ -8,11 +8,12 @@ from enum import Enum
 import math
 import threading
 import time
-from typing import Any, Deque, Mapping, Optional, Union
+from typing import Any, Callable, Deque, Mapping, Optional, Union
 
 from fleetdock.devices import BaseDevice, DeviceState
 from fleetdock.events import CoordinateFrame, EventCategory, EventType
 from fleetdock.models import CapabilityName
+from fleetdock.movement import GpsPoint, gps_offset_m
 from fleetdock.follow_models import (
     BandFollowPolicy,
     CameraFollowPolicy,
@@ -271,6 +272,9 @@ class FollowExecutor:
         self._stopped_at: Optional[float] = None
         self._failed_at: Optional[float] = None
         self._last_error: Optional[BaseException] = None
+        self._global_origin: Optional[GpsPoint] = None
+        self._shared_local_frame_id: Optional[str] = None
+        self._telemetry_releases: dict[int, Callable[[], None]] = {}
 
     @property
     def options(self) -> FollowExecutionOptions:
@@ -283,7 +287,12 @@ class FollowExecutor:
         启动前会校验 follower 非空且具备移动与停止能力；运行后按 ``options.interval_s`` 秒周期读取
         状态快照并发送标准 ``move`` 命令。已运行时重复调用直接返回当前对象。
         """
-        self._validate_preflight()
+        self._refresh_telemetry_leases()
+        try:
+            self._validate_preflight()
+        except BaseException:
+            self._release_telemetry_leases()
+            raise
         with self._lock:
             if self._state is FollowSessionState.RUNNING:
                 return self
@@ -347,6 +356,7 @@ class FollowExecutor:
             worker.join(timeout_s=wait_s)
 
         self._apply_stop_action()
+        self._release_telemetry_leases()
         with self._lock:
             self._state = FollowSessionState.STOPPED
             self._message = "stopped"
@@ -385,6 +395,7 @@ class FollowExecutor:
         """记录 leader 变更，清空历史轨迹并发布自定义事件；后续 tick 会从新 leader 重新采样，无返回值。"""
         with self._lock:
             self._leader_history.clear()
+        self._refresh_telemetry_leases()
         self._emit("custom.follow.leader.changed", {"leader_id": device_public_id(leader)})
 
     def _run(self) -> None:
@@ -404,9 +415,10 @@ class FollowExecutor:
             self.stop(wait_s=0.0)
             return
 
+        self._refresh_telemetry_leases()
         now = time.monotonic()
         leader_state = self._session.leader.state.snapshot()
-        leader_xy = _local_xy(leader_state)
+        leader_xy = self._common_xy(leader_state, now_s=now)
         leader_decision = self._safety.evaluate_device(self._session.leader, now_s=now)
         self._publish_safety_decision(self._session.leader, leader_decision)
         if leader_xy is None or not leader_decision.allowed:
@@ -419,7 +431,16 @@ class FollowExecutor:
             return
 
         self._leader_history.append((now, leader_xy[0], leader_xy[1]))
-        spacing_decision = self._safety.evaluate_fleet_spacing(self._session.followers, now_s=now)
+        devices = (self._session.leader, *self._session.followers)
+        common_positions = {
+            device_public_id(device): self._common_xy(device.state.snapshot(), now_s=now)
+            for device in devices
+        }
+        spacing_decision = self._safety.evaluate_fleet_spacing(
+            devices,
+            now_s=now,
+            positions={key: value for key, value in common_positions.items() if value is not None},
+        )
         if spacing_decision.violations:
             for follower in self._session.followers:
                 self._publish_safety_decision(follower, spacing_decision)
@@ -427,7 +448,7 @@ class FollowExecutor:
         for follower in self._session.followers:
             follower_id = device_public_id(follower)
             follower_state = follower.state.snapshot()
-            follower_xy = _local_xy(follower_state)
+            follower_xy = common_positions.get(follower_id)
             policy = self._session.policy_for(follower)
             follower_decision = self._safety.evaluate_device(follower, now_s=now)
             self._publish_safety_decision(follower, follower_decision)
@@ -451,14 +472,22 @@ class FollowExecutor:
                 ):
                     follower.return_to_launch()
                 continue
-            if not _frames_are_compatible(leader_state.local_position_frame, follower_state.local_position_frame):
+            if self._global_origin is None and not _frames_are_compatible(
+                leader_state.local_position_frame,
+                follower_state.local_position_frame,
+            ):
                 raise RuntimeError(
                     f"{follower_id} local position frame {follower_state.local_position_frame.value} "
                     f"does not match leader frame {leader_state.local_position_frame.value}."
                 )
 
             distance_to_leader_m = math.hypot(leader_xy[0] - follower_xy[0], leader_xy[1] - follower_xy[1])
-            leader_distance_decision = self._safety.evaluate_leader_distance(follower, self._session.leader)
+            leader_distance_decision = self._safety.evaluate_leader_distance(
+                follower,
+                self._session.leader,
+                follower_xy=follower_xy,
+                leader_xy=leader_xy,
+            )
             self._publish_safety_decision(follower, leader_distance_decision)
             if not leader_distance_decision.allowed:
                 self._record_follower_state(
@@ -547,6 +576,51 @@ class FollowExecutor:
                 raise RuntimeError(f"{device_public_id(follower)} does not support motion control.")
             if not follower.profile.has_capability(CapabilityName.STOP):
                 raise RuntimeError(f"{device_public_id(follower)} does not support safe stop.")
+
+        devices = (self._session.leader, *self._session.followers)
+        states = tuple(device.state.snapshot() for device in devices)
+        if all(state.latitude_deg is not None and state.longitude_deg is not None for state in states):
+            leader_state = states[0]
+            leader_latitude_deg = leader_state.latitude_deg
+            leader_longitude_deg = leader_state.longitude_deg
+            if leader_latitude_deg is None or leader_longitude_deg is None:
+                raise RuntimeError("leader global position disappeared during follow preflight.")
+            self._global_origin = GpsPoint(
+                float(leader_latitude_deg),
+                float(leader_longitude_deg),
+                float(leader_state.absolute_altitude_m or 0.0),
+            )
+            self._shared_local_frame_id = None
+            return
+
+        frame_ids = tuple(device.metadata.local_frame_id for device in devices)
+        if frame_ids[0] is None or any(frame_id != frame_ids[0] for frame_id in frame_ids[1:]):
+            raise RuntimeError(
+                "Follow execution requires global positions for every member, or the same explicit "
+                "DeviceMetadata.local_frame_id for a genuinely shared local map."
+            )
+        leader_frame = states[0].local_position_frame
+        if any(not _frames_are_compatible(leader_frame, state.local_position_frame) for state in states[1:]):
+            raise RuntimeError("Follow execution members use incompatible local coordinate frame conventions.")
+        self._global_origin = None
+        self._shared_local_frame_id = frame_ids[0]
+
+    def _common_xy(self, state: DeviceState, *, now_s: float) -> Optional[tuple[float, float]]:
+        """把设备位置转换为当前跟随会话的公共米制平面坐标。"""
+        if self._global_origin is not None:
+            if not _global_telemetry_is_fresh(state, now_s, self._options.telemetry_timeout_s):
+                return None
+            if state.latitude_deg is None or state.longitude_deg is None:
+                return None
+            return gps_offset_m(
+                self._global_origin,
+                GpsPoint(
+                    float(state.latitude_deg),
+                    float(state.longitude_deg),
+                    float(state.absolute_altitude_m or self._global_origin.altitude_m),
+                ),
+            )
+        return _local_xy(state)
 
     def _compute_command(
         self,
@@ -709,6 +783,7 @@ class FollowExecutor:
 
     def _fail(self, exc: BaseException) -> None:
         self._last_error = exc
+        self._release_telemetry_leases()
         with self._lock:
             self._state = FollowSessionState.FAILED
             self._message = str(exc)
@@ -726,6 +801,38 @@ class FollowExecutor:
         except Exception:
             return
 
+    def _refresh_telemetry_leases(self) -> None:
+        """让跟随会话涉及的设备在会话存续期间持续提供移动相关遥测。"""
+        devices = (self._session.leader, *self._session.followers)
+        current_ids = {id(device) for device in devices}
+        with self._lock:
+            stale_ids = set(self._telemetry_releases) - current_ids
+            stale_releases = [self._telemetry_releases.pop(device_id) for device_id in stale_ids]
+            missing = [device for device in devices if id(device) not in self._telemetry_releases]
+        for release in stale_releases:
+            release()
+        acquired: list[tuple[int, Callable[[], None]]] = []
+        try:
+            for device in missing:
+                acquired.append((id(device), device._acquire_capability_telemetry(CapabilityName.MOVE)))
+        except BaseException:
+            for _, release in acquired:
+                release()
+            raise
+        with self._lock:
+            for device_id, release in acquired:
+                existing = self._telemetry_releases.setdefault(device_id, release)
+                if existing is not release:
+                    release()
+
+    def _release_telemetry_leases(self) -> None:
+        """释放跟随会话持有的全部遥测需求。"""
+        with self._lock:
+            releases = tuple(self._telemetry_releases.values())
+            self._telemetry_releases.clear()
+        for release in releases:
+            release()
+
 
 def _local_xy(state: DeviceState) -> Optional[tuple[float, float]]:
     if state.local_x_m is None or state.local_y_m is None:
@@ -735,6 +842,11 @@ def _local_xy(state: DeviceState) -> Optional[tuple[float, float]]:
 
 def _telemetry_is_fresh(state: DeviceState, now_s: float, timeout_s: float) -> bool:
     updated_at_s = state.local_position_updated_at_s
+    return updated_at_s is None or now_s - updated_at_s <= timeout_s
+
+
+def _global_telemetry_is_fresh(state: DeviceState, now_s: float, timeout_s: float) -> bool:
+    updated_at_s = state.global_position_updated_at_s
     return updated_at_s is None or now_s - updated_at_s <= timeout_s
 
 

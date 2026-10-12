@@ -9,6 +9,7 @@ from typing import Any, Mapping, Optional, Union
 from uuid import uuid4
 
 from fleetdock._frozen import freeze_mapping, freeze_value
+from fleetdock.takeoff import TakeoffExecutionState, TakeoffMethod, TakeoffStatus
 
 class EventCategory(str, Enum):
     """单设备事件的语义分类，用于帮助调用方按生命周期、命令、遥测等领域过滤事件。"""
@@ -91,6 +92,11 @@ class EventType(str, Enum):
     IN_AIR_CHANGED = "aerial.in_air.changed"  # 无人机空中状态变化。
     LANDED_STATE_CHANGED = "aerial.landed_state.changed"  # 无人机着陆状态变化。
     FLIGHT_MODE_CHANGED = "aerial.flight_mode.changed"  # 无人机飞行模式变化。
+    TAKEOFF_STARTED = "aerial.takeoff.started"  # 起飞任务开始执行预检。
+    TAKEOFF_STRATEGY_SELECTED = "aerial.takeoff.method_selected"  # SDK 已自动选择起飞控制方法。
+    TAKEOFF_PROGRESS_UPDATED = "aerial.takeoff.progress.updated"  # 起飞高度或物理进度更新。
+    TAKEOFF_COMPLETED = "aerial.takeoff.completed"  # 目标高度和控制交接均已确认。
+    TAKEOFF_ABORTED = "aerial.takeoff.aborted"  # 起飞被取消、安全中止或执行失败。
     POSTURE_CHANGED = "legged.posture.changed"  # 足式设备姿态变化。
     GAIT_CHANGED = "legged.gait.changed"  # 足式设备步态变化。
     FOOT_CONTACT_UPDATED = "legged.foot_contact.updated"  # 足端接触状态更新。
@@ -759,6 +765,35 @@ class FlightModeChangedEvent(StateChangedEvent):
     pass
 
 
+class TakeoffStatusEvent(DeviceEvent):
+    """起飞任务生命周期事件；``status`` 返回不可变物理执行状态。"""
+
+    @property
+    def status(self) -> TakeoffStatus:
+        """返回执行 ID、目标/当前高度、自动方法、进度和原因。"""
+        return self._data
+
+
+class TakeoffStartedEvent(TakeoffStatusEvent):
+    """起飞预检开始事件；状态载荷包含执行 ID、目标相对高度（米）及当前检查原因。"""
+
+
+class TakeoffStrategySelectedEvent(TakeoffStatusEvent):
+    """SDK 自动完成起飞方法选择事件；业务代码通常无需据此分支。"""
+
+
+class TakeoffProgressUpdatedEvent(TakeoffStatusEvent):
+    """起飞物理进度事件；高度单位为米，进度范围为 0~1。"""
+
+
+class TakeoffCompletedEvent(TakeoffStatusEvent):
+    """起飞目标高度及安全保持完成事件。"""
+
+
+class TakeoffAbortedEvent(TakeoffStatusEvent):
+    """起飞取消、安全中止或失败事件。"""
+
+
 class FailsafeChangedEvent(StateChangedEvent):
     """失效保护状态变化事件；变化值表示保护是否启用及可选触发原因。"""
 
@@ -926,6 +961,11 @@ STANDARD_EVENT_CLASSES = {
     EventType.IN_AIR_CHANGED: InAirChangedEvent,
     EventType.LANDED_STATE_CHANGED: LandedStateChangedEvent,
     EventType.FLIGHT_MODE_CHANGED: FlightModeChangedEvent,
+    EventType.TAKEOFF_STARTED: TakeoffStartedEvent,
+    EventType.TAKEOFF_STRATEGY_SELECTED: TakeoffStrategySelectedEvent,
+    EventType.TAKEOFF_PROGRESS_UPDATED: TakeoffProgressUpdatedEvent,
+    EventType.TAKEOFF_COMPLETED: TakeoffCompletedEvent,
+    EventType.TAKEOFF_ABORTED: TakeoffAbortedEvent,
     EventType.POSTURE_CHANGED: PostureChangedEvent,
     EventType.GAIT_CHANGED: GaitChangedEvent,
     EventType.FOOT_CONTACT_UPDATED: FootContactUpdatedEvent,
@@ -933,6 +973,29 @@ STANDARD_EVENT_CLASSES = {
 
 
 def _coerce_standard_payload(event_type: StandardEventType, payload: Any) -> Any:
+    if event_type in (
+        EventType.TAKEOFF_STARTED,
+        EventType.TAKEOFF_STRATEGY_SELECTED,
+        EventType.TAKEOFF_PROGRESS_UPDATED,
+        EventType.TAKEOFF_COMPLETED,
+        EventType.TAKEOFF_ABORTED,
+    ):
+        if isinstance(payload, TakeoffStatus):
+            return payload
+        data = dict(payload)
+        return TakeoffStatus(
+            execution_id=str(data["execution_id"]),
+            state=TakeoffExecutionState(data["state"]),
+            target_altitude_m=float(data["target_altitude_m"]),
+            current_altitude_m=(
+                float(data["current_altitude_m"])
+                if data.get("current_altitude_m") is not None
+                else None
+            ),
+            progress=float(data.get("progress", 0.0)),
+            method=TakeoffMethod(data["method"]) if data.get("method") is not None else None,
+            reason=str(data.get("reason", "")),
+        )
     if event_type in (
         EventType.SENSOR_DISCOVERED,
         EventType.SENSOR_LOST,
