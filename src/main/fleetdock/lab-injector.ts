@@ -37,6 +37,10 @@ export class FleetDockLabInjector {
         attached.cssKeys.push(...cssKeys);
 
         await webContents.executeJavaScript(
+          this._readAsset('fleetdock-lab-brand.js'),
+          true
+        );
+        await webContents.executeJavaScript(
           this._readAsset('skylab-command-center.js'),
           true
         );

@@ -1,6 +1,8 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
+/* eslint-disable no-control-regex -- [UAV-IDE MODIFY] Simulation log cleanup intentionally strips ANSI escape sequences. */
+
 import { ChildProcess, execFile, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,6 +32,10 @@ import {
   MediaMtxService
 } from '../media/mediamtx-service';
 import { SimulationTimingRecorder } from './simulation-timing-recorder';
+import {
+  QGC_MAVLINK_LOCAL_PORT_BASE,
+  QGC_MAVLINK_REMOTE_PORT
+} from '../../groundstation/qgc-link';
 
 type ExecResult = {
   stdout: string;
@@ -617,6 +623,7 @@ export class SimulationProcessSupervisor {
         `PX4_SIM_TCP_PORT=${drone.simulatorPort}`,
         `PX4_INSTANCE=${drone.px4Instance}`,
         `PX4_SYS_AUTOSTART=${drone.px4AutostartId}`,
+        ...this._px4ParameterEnvironment(drone.px4ParameterOverrides),
         `SKYLAB_PX4_LABEL=${this._quoteBash(label)}`,
         `exec ./build/px4_sitl_default/bin/px4 -i ${drone.px4Instance}`
       ].join(' ');
@@ -654,6 +661,29 @@ export class SimulationProcessSupervisor {
     // [UAV-IDE MODIFY] Commander readiness and MAVLink configuration are independent per PX4 instance.
     await this._waitForPx4Commanders(plan);
     await this._startPx4MavlinkOutputsBatch(plan);
+    this._status.groundStationLink = {
+      targetPort: QGC_MAVLINK_REMOTE_PORT,
+      state: 'starting',
+      configuredVehicles: 0
+    };
+    try {
+      await this._startQgcMavlinkOutputsBatch(plan);
+      this._status.groundStationLink = {
+        targetPort: QGC_MAVLINK_REMOTE_PORT,
+        state: 'ready',
+        configuredVehicles: plan.drones.length
+      };
+    } catch (error) {
+      const message = this._message(error);
+      this._status.groundStationLink = {
+        targetPort: QGC_MAVLINK_REMOTE_PORT,
+        state: 'failed',
+        configuredVehicles: 0,
+        error: message
+      };
+      // [UAV-IDE MODIFY] QGC is an optional observer; its link must not block the SDK simulation path.
+      await this._appendLog(`QGroundControl MAVLink output unavailable: ${message}`);
+    }
   }
 
   private async _waitForPx4Commanders(
@@ -765,6 +795,62 @@ export class SimulationProcessSupervisor {
     }
   }
 
+  private async _startQgcMavlinkOutputsBatch(
+    plan: UavSimulationLaunchPlan
+  ): Promise<void> {
+    // [UAV-IDE MODIFY] Mirror every PX4 vehicle to QGC while preserving the per-device SDK endpoint.
+    const commands = plan.drones.map(drone => {
+      const localPort = QGC_MAVLINK_LOCAL_PORT_BASE + drone.px4Instance;
+      const startCommand = [
+        './build/px4_sitl_default/bin/px4-mavlink',
+        `--instance ${drone.px4Instance}`,
+        'start -x',
+        `-u ${localPort}`,
+        `-r ${PX4_MAVLINK_RATE}`,
+        `-t ${this._quoteBash(plan.windowsHostAddress)}`,
+        `-o ${QGC_MAVLINK_REMOTE_PORT}`
+      ].join(' ');
+      return [
+        '(',
+        `timeout 5s ./build/px4_sitl_default/bin/px4-mavlink --instance ${drone.px4Instance} stop -u ${localPort} || true`,
+        `${startCommand} && echo QGC_CONFIGURED:${drone.px4Instance}`,
+        ') &'
+      ].join('\n');
+    });
+    const result = await this._execFileAsync('wsl.exe', [
+      '-d',
+      plan.wslDistro,
+      '--cd',
+      plan.px4WslDirectory,
+      'bash',
+      '-lc',
+      [...commands, 'wait || true'].join('\n')
+    ]);
+    const configuredInstances = new Set(
+      String(result.stdout || '')
+        .split(/\r?\n/)
+        .map(line => /^QGC_CONFIGURED:(\d+)$/.exec(line.trim()))
+        .filter((match): match is RegExpExecArray => !!match)
+        .map(match => Number(match[1]))
+    );
+    const failed = plan.drones.filter(
+      drone => !configuredInstances.has(drone.px4Instance)
+    );
+    if (failed.length) {
+      throw new Error(
+        `QGC MAVLink 输出配置失败：${failed
+          .map(drone => drone.vehicleName)
+          .join(', ')}。`
+      );
+    }
+    for (const drone of plan.drones) {
+      const localPort = QGC_MAVLINK_LOCAL_PORT_BASE + drone.px4Instance;
+      await this._appendLog(
+        `PX4 ${drone.vehicleName} QGC output -> ${plan.windowsHostAddress}:${QGC_MAVLINK_REMOTE_PORT} (local ${localPort}).`
+      );
+    }
+  }
+
   private async _startClient(plan: UavSimulationLaunchPlan): Promise<void> {
     if (!fs.existsSync(plan.clientScript)) {
       throw new Error(`Project AirSim 客户端脚本不存在：${plan.clientScript}`);
@@ -822,6 +908,13 @@ export class SimulationProcessSupervisor {
     }
     if (this._sceneProcess?.exitCode !== null) {
       throw new Error('Project AirSim 场景启动后已退出。');
+    }
+    const exitedPx4 = this._px4Processes
+      .map((child, index) => ({ child, drone: plan.drones[index] }))
+      .filter(({ child }) => child.exitCode !== null || child.killed)
+      .map(({ drone }) => drone?.vehicleName || 'unknown');
+    if (exitedPx4.length) {
+      throw new Error(`PX4 启动后已退出：${exitedPx4.join(', ')}。`);
     }
     const protocolVersion = Number(clientResult.protocolVersion || 0);
     const capabilities = (
@@ -1779,6 +1872,18 @@ export class SimulationProcessSupervisor {
 
   private _quoteBash(value: string | number): string {
     return `'${String(value).replace(/'/g, "'\\''")}'`;
+  }
+
+  private _px4ParameterEnvironment(
+    overrides: Readonly<Record<string, number>>
+  ): string[] {
+    return Object.entries(overrides).map(([name, value]) => {
+      // [UAV-IDE MODIFY] Only profile-owned PX4 parameter names and finite numeric values may cross the WSL shell boundary.
+      if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(name) || !Number.isFinite(value)) {
+        throw new Error(`PX4 参数覆盖无效：${name}。`);
+      }
+      return `PX4_PARAM_${name}=${this._quoteBash(value)}`;
+    });
   }
 
   private _escapeWslShellExpansion(script: string): string {

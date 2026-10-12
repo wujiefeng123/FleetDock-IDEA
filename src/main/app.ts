@@ -82,6 +82,22 @@ export interface IApplication {
   registry: IRegistry;
 }
 
+/** Generic desktop update source selected by the product bootstrap. */
+export interface IDesktopUpdateConfig {
+  enabled: boolean;
+  metadataUrl?: string;
+  releasesUrl?: string;
+}
+
+export type DesktopUpdateConfig = IDesktopUpdateConfig;
+
+const upstreamDesktopUpdateConfig: IDesktopUpdateConfig = {
+  enabled: true,
+  metadataUrl:
+    'https://github.com/jupyterlab/jupyterlab-desktop/releases/latest/download/latest.yml',
+  releasesUrl: 'https://github.com/jupyterlab/jupyterlab-desktop/releases'
+};
+
 interface IClearHistoryOptions {
   sessionData: boolean;
   recentRemoteURLs: boolean;
@@ -268,8 +284,12 @@ export class JupyterApplication implements IApplication, IDisposable {
   /**
    * Construct the Jupyter application
    */
-  constructor(cliArgs: ICLIArguments) {
+  constructor(
+    cliArgs: ICLIArguments,
+    desktopUpdateConfig: DesktopUpdateConfig = upstreamDesktopUpdateConfig
+  ) {
     this._cliArgs = cliArgs;
+    this._desktopUpdateConfig = desktopUpdateConfig;
     this._registry = new Registry();
     this._serverFactory = new JupyterServerFactory(this._registry);
 
@@ -288,6 +308,7 @@ export class JupyterApplication implements IApplication, IDisposable {
     this._registerListeners();
 
     if (
+      this._desktopUpdateConfig.enabled &&
       userSettings.getValue(SettingType.checkForUpdatesAutomatically) !== false
     ) {
       let checkDirectly = true;
@@ -408,6 +429,7 @@ export class JupyterApplication implements IApplication, IDisposable {
         updateBundledEnvAutomatically: settings.getValue(
           SettingType.updateBundledEnvAutomatically
         ),
+        updatesEnabled: this._desktopUpdateConfig.enabled,
         defaultWorkingDirectory: userSettings.getValue(
           SettingType.defaultWorkingDirectory
         ),
@@ -541,6 +563,9 @@ export class JupyterApplication implements IApplication, IDisposable {
   }
 
   private _setupAutoUpdater() {
+    if (!this._desktopUpdateConfig.enabled) {
+      return;
+    }
     autoUpdater.once(
       'update-downloaded',
       (event, releaseNotes, releaseName) => {
@@ -649,6 +674,9 @@ export class JupyterApplication implements IApplication, IDisposable {
     this._evm.registerEventHandler(
       EventTypeMain.SetCheckForUpdatesAutomatically,
       (_event, autoUpdate) => {
+        if (!this._desktopUpdateConfig.enabled) {
+          return;
+        }
         userSettings.setValue(
           SettingType.checkForUpdatesAutomatically,
           autoUpdate
@@ -659,6 +687,9 @@ export class JupyterApplication implements IApplication, IDisposable {
     this._evm.registerEventHandler(
       EventTypeMain.SetInstallUpdatesAutomatically,
       (_event, install) => {
+        if (!this._desktopUpdateConfig.enabled) {
+          return;
+        }
         userSettings.setValue(SettingType.installUpdatesAutomatically, install);
       }
     );
@@ -666,9 +697,12 @@ export class JupyterApplication implements IApplication, IDisposable {
     this._evm.registerEventHandler(
       EventTypeMain.LaunchInstallerDownloadPage,
       () => {
-        shell.openExternal(
-          'https://github.com/jupyterlab/jupyterlab-desktop/releases'
-        );
+        if (
+          this._desktopUpdateConfig.enabled &&
+          this._desktopUpdateConfig.releasesUrl
+        ) {
+          void shell.openExternal(this._desktopUpdateConfig.releasesUrl);
+        }
       }
     );
 
@@ -1055,7 +1089,9 @@ export class JupyterApplication implements IApplication, IDisposable {
     });
 
     this._evm.registerEventHandler(EventTypeMain.CheckForUpdates, _event => {
-      this.checkForUpdates('always');
+      if (this._desktopUpdateConfig.enabled) {
+        this.checkForUpdates('always');
+      }
     });
 
     this._evm.registerEventHandler(
@@ -1271,11 +1307,14 @@ export class JupyterApplication implements IApplication, IDisposable {
   }
 
   checkForUpdates(showDialog: 'on-new-version' | 'always') {
+    if (
+      !this._desktopUpdateConfig.enabled ||
+      !this._desktopUpdateConfig.metadataUrl
+    ) {
+      return;
+    }
     net
-      .fetch(
-        'https://github.com/jupyterlab/jupyterlab-desktop/releases/latest/download/latest.yml',
-        { cache: 'no-store' }
-      )
+      .fetch(this._desktopUpdateConfig.metadataUrl, { cache: 'no-store' })
       .then(async response => {
         try {
           if (!response.ok) {
@@ -1322,6 +1361,7 @@ export class JupyterApplication implements IApplication, IDisposable {
   }
 
   private _cliArgs: ICLIArguments;
+  private _desktopUpdateConfig: DesktopUpdateConfig;
   private _registry: IRegistry;
   private _serverFactory: JupyterServerFactory;
   private _disposePromise: Promise<void>;

@@ -63,7 +63,7 @@ export class DeviceManagerDialog {
       preload: path.join(__dirname, './preload.js')
     });
 
-    this._pageBody = this._buildPageSource();
+    this._pageBody = this._buildPageSource(options.initialDeviceId);
   }
 
   get window(): ThemedWindow {
@@ -74,7 +74,21 @@ export class DeviceManagerDialog {
     this._window.loadDialogContent(this._pageBody);
   }
 
-  private _buildPageSource(): string {
+  selectDevice(deviceId: string) {
+    const selectedId = String(deviceId || '').trim();
+    if (!selectedId || this._window.window.isDestroyed()) {
+      return;
+    }
+    void this._window.window.webContents
+      .executeJavaScript(
+        `window.fleetDockDeviceManager?.selectDevice(${JSON.stringify(
+          selectedId
+        )});`
+      )
+      .catch((_error: unknown): void => undefined);
+  }
+
+  private _buildPageSource(initialDeviceId = ''): string {
     return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -109,7 +123,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
 .main{width:100%;height:100%;min-width:0;min-height:0;overflow:auto;padding:18px 22px 32px;overscroll-behavior:contain}
 .panel{max-width:1000px;margin:0 auto;padding-bottom:8px}.panelHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
 .panelTitle{font-size:18px;font-weight:750}
-.panelHint{margin-top:4px;color:#64748b}.mainList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.mainItem{border:1px solid #dbe5f0;border-radius:12px;background:#fff;padding:16px;text-align:left;cursor:pointer;min-height:104px;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}.mainItem:hover{border-color:#93c5fd;box-shadow:0 12px 28px rgba(37,99,235,.1);transform:translateY(-2px)}.mainEmpty{border:1px dashed #bfd0e4;border-radius:8px;background:#fff;padding:34px 18px;text-align:center;color:#64748b}.mainEmpty strong{display:block;color:#172033;font-size:16px;margin-bottom:6px}
+.panelHint{margin-top:4px;color:#64748b}.mainList{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.mainItemWrap{position:relative;min-width:0}.mainItem{width:100%;border:1px solid #dbe5f0;border-radius:12px;background:#fff;padding:16px 52px 16px 16px;text-align:left;cursor:pointer;min-height:104px;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}.mainItem:hover{border-color:#93c5fd;box-shadow:0 12px 28px rgba(37,99,235,.1);transform:translateY(-2px)}.mainItemDelete{position:absolute;top:11px;right:11px;width:28px;height:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#94a3b8;cursor:pointer;font-size:20px;line-height:24px;display:flex;align-items:center;justify-content:center;transition:border-color .16s ease,background .16s ease,color .16s ease}.mainItemDelete:hover,.mainItemDelete:focus-visible{border-color:#fecaca;background:#fef2f2;color:#dc2626;outline:none}.mainEmpty{border:1px dashed #bfd0e4;border-radius:8px;background:#fff;padding:34px 18px;text-align:center;color:#64748b}.mainEmpty strong{display:block;color:#172033;font-size:16px;margin-bottom:6px}
 .deviceCard{display:flex;align-items:center;gap:12px;min-width:0}.deviceIcon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#eff6ff;color:#2563eb;border:1px solid #dbeafe}.deviceIcon[data-category="ugv"]{background:#ecfdf5;color:#059669;border-color:#a7f3d0}.deviceIcon[data-category="usv"]{background:#ecfeff;color:#0891b2;border-color:#a5f3fc}.deviceIcon[data-category="humanoid"]{background:#f5f3ff;color:#7c3aed;border-color:#ddd6fe}.deviceIcon[data-category="quadruped"]{background:#fffbeb;color:#d97706;border-color:#fde68a}.deviceIcon svg{width:26px;height:26px;display:block}.deviceCardContent{min-width:0;flex:1}.deviceCardName{font-size:14px;font-weight:750;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.deviceCardMeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}.deviceMeta{height:22px;padding:0 8px;border-radius:999px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;font-size:12px;display:inline-flex;align-items:center}.deviceMeta.source{background:#eef6ff;color:#2563eb;border-color:#cfe2ff}.deviceMeta.source.physical{background:#fff7ed;color:#c2410c;border-color:#fed7aa}.mainItem .deviceCard{gap:14px}.mainItem .deviceIcon{width:52px;height:52px;flex-basis:52px;border-radius:14px}.mainItem .deviceIcon svg{width:31px;height:31px}.mainItem .deviceCardName{font-size:16px}
 .listToolbar{display:grid;grid-template-columns:minmax(220px,1fr) 180px 180px;gap:10px;margin-bottom:14px;padding:12px;border:1px solid #dbe5f0;border-radius:10px;background:#fff}
 .section{border:1px solid #dbe5f0;border-radius:8px;background:#fff;margin-bottom:12px;overflow:hidden}.sectionTitle{height:42px;padding:0 14px;display:flex;align-items:center;font-weight:750;border-bottom:1px solid #eef2f7;background:#fbfdff}
@@ -140,6 +154,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
 <script>
 (function () {
   const api = window.electronAPI || {};
+  const INITIAL_DEVICE_ID = ${JSON.stringify(initialDeviceId || '')};
   const TXT = ${JSON.stringify(TXT)};
   const CATEGORIES = [
     { value: 'uav', label: '\\u65e0\\u4eba\\u673a' },
@@ -154,9 +169,9 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
   ];
   const AIRFRAMES = [
     { value: 'quadrotor', label: '\\u56db\\u65cb\\u7ffc', px4AutostartId: 10016, projectAirsimAirframe: 'quadrotor-x', robotTemplate: 'robot_quadrotor_px4.jsonc' },
-    { value: 'hexarotor', label: '\\u516d\\u65cb\\u7ffc', px4AutostartId: 6001, projectAirsimAirframe: 'hexarotor-x', robotTemplate: 'robot_quadrotor_px4.jsonc' },
-    { value: 'vtol_tailsitter', label: '\\u5782\\u76f4\\u7ffc Tailsitter', px4AutostartId: 13200, projectAirsimAirframe: 'vtol-quad-x-tailsitter', robotTemplate: 'robot_quadrotor_px4.jsonc' },
-    { value: 'vtol_tiltrotor', label: '\\u5782\\u76f4\\u7ffc Tiltrotor', px4AutostartId: 13030, projectAirsimAirframe: 'vtol-quad-tiltrotor', robotTemplate: 'robot_quadrotor_px4.jsonc' }
+    { value: 'hexarotor', label: '\\u516d\\u65cb\\u7ffc', px4AutostartId: 10016, projectAirsimAirframe: 'hexarotor-x', robotTemplate: 'robot_hexarotor_px4.jsonc' },
+    { value: 'vtol_tailsitter', label: '\\u5782\\u76f4\\u7ffc Tailsitter', px4AutostartId: 1041, projectAirsimAirframe: 'vtol-quad-x-tailsitter', robotTemplate: 'robot_vtol_tailsitter_px4.jsonc' },
+    { value: 'vtol_tiltrotor', label: '\\u5782\\u76f4\\u7ffc Tiltrotor', px4AutostartId: 1042, projectAirsimAirframe: 'vtol-quad-tiltrotor', robotTemplate: 'robot_vtol_tiltrotor_px4.jsonc' }
   ];
   const FLEETDOCK_PRODUCTS = [
     { value: 'px4_generic', label: '通用 PX4 无人机', product: 'px4.generic', category: 'uav' },
@@ -292,7 +307,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
         airframeType: profile.value,
         px4AutostartId: profile.px4AutostartId,
         projectAirsimAirframe: profile.projectAirsimAirframe,
-        robotTemplate: 'robot_quadrotor_px4.jsonc',
+        robotTemplate: profile.robotTemplate,
         vehicleName: 'Drone' + index,
         systemId: index,
         px4Instance: null,
@@ -337,7 +352,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
     draft.uav.airframeType = profile.value;
     draft.uav.px4AutostartId = profile.px4AutostartId;
     draft.uav.projectAirsimAirframe = profile.projectAirsimAirframe;
-    draft.uav.robotTemplate = 'robot_quadrotor_px4.jsonc';
+    draft.uav.robotTemplate = profile.robotTemplate;
     draft.simulation.model = profile.value;
     draft.simulation.engine = 'project-airsim-px4';
   }
@@ -562,16 +577,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
     const report = state.probeResult;
     if (!report) return '';
     const telemetry = report.telemetry || {};
-    const identity = [
-      report.productName || report.vendorName ? '<br>\u8bbe\u5907: ' + esc([report.vendorName, report.productName].filter(Boolean).join(' ')) : '',
-      report.firmwareVersion ? '<br>\u56fa\u4ef6: ' + esc(report.firmwareVersion) : '',
-      report.systemId != null ? '<br>System / Component ID: ' + esc(report.systemId) + ' / ' + esc(report.componentId == null ? '-' : report.componentId) : '',
-      report.hardwareUid ? '<br>Hardware UID: ' + esc(report.hardwareUid) : ''
-    ].join('');
     const live = report.telemetryReceived
       ? '<br>\u9065\u6d4b: \u6a21\u5f0f=' + esc(telemetry.flightMode || '-') + '\uff0c\u89e3\u9501=' + (telemetry.armed === true ? '\u662f' : telemetry.armed === false ? '\u5426' : '-') + '\uff0c\u98de\u884c\u4e2d=' + (telemetry.inAir === true ? '\u662f' : telemetry.inAir === false ? '\u5426' : '-') + '\uff0c\u7535\u91cf=' + (telemetry.batteryPercent == null ? '-' : esc(telemetry.batteryPercent) + '%') + '\uff0cGPS=' + (telemetry.gpsPositionOk === true ? '\u6b63\u5e38' : telemetry.gpsPositionOk === false ? '\u672a\u5c31\u7eea' : '-') + (telemetry.latitudeDeg == null || telemetry.longitudeDeg == null ? '' : ' (' + esc(Number(telemetry.latitudeDeg).toFixed(6)) + ', ' + esc(Number(telemetry.longitudeDeg).toFixed(6)) + ')')
       : '<br>\u6536\u5230\u9065\u6d4b: \u5426';
-    return '<div class="probe full ' + (report.ok ? 'ok' : 'error') + '"><strong>' + (report.ok ? '\u914d\u7f6e\u9a8c\u8bc1\u901a\u8fc7\uff0c\u7aef\u53e3\u5df2\u91ca\u653e' : '\u8fde\u63a5\u6d4b\u8bd5\u5931\u8d25') + '</strong><br>' + esc(report.message || '') + identity + '<br>Endpoint: ' + esc(report.endpoint || endpoint) + live + '<br>\u7aef\u53e3\u5df2\u91ca\u653e: ' + (report.released ? '\u662f' : '\u5426') + '<div class="actions" style="margin-top:10px"><button class="btn" data-action="copy-probe-report">\u590d\u5236\u62a5\u544a</button><button class="btn" data-action="export-probe-report">\u5bfc\u51fa JSON</button></div></div>';
+    return '<div class="probe full ' + (report.ok ? 'ok' : 'error') + '"><strong>' + (report.ok ? '\u914d\u7f6e\u9a8c\u8bc1\u901a\u8fc7\uff0c\u7aef\u53e3\u5df2\u91ca\u653e' : '\u8fde\u63a5\u6d4b\u8bd5\u5931\u8d25') + '</strong><br>' + esc(report.message || '') + '<br>Endpoint: ' + esc(report.endpoint || endpoint) + live + '<br>\u7aef\u53e3\u5df2\u91ca\u653e: ' + (report.released ? '\u662f' : '\u5426') + '<div class="actions" style="margin-top:10px"><button class="btn" data-action="copy-probe-report">\u590d\u5236\u62a5\u544a</button><button class="btn" data-action="export-probe-report">\u5bfc\u51fa JSON</button></div></div>';
   }
 
   function renderDeviceCards() {
@@ -579,9 +588,9 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
     return devices.length ? '<div class="mainList">' + devices.map(device => {
       const category = device.deviceCategory || 'uav';
       const runtime = device.runtimeKind || (device.source === 'real' || device.accessType === 'physical' ? 'physical' : 'simulation');
-      return '<button class="mainItem" data-action="select" data-id="' + esc(device.id) + '">' +
+      return '<div class="mainItemWrap"><button class="mainItem" data-action="select" data-id="' + esc(device.id) + '">' +
         '<div class="deviceCard"><div class="deviceIcon" data-category="' + esc(category) + '">' + deviceCategoryIcon(category) + '</div><div class="deviceCardContent"><div class="deviceCardName">' + esc(device.name || 'device') + '</div><div class="deviceCardMeta"><span class="deviceMeta">' + esc(optionLabel(CATEGORIES, category)) + '</span><span class="deviceMeta source ' + (runtime === 'physical' ? 'physical' : '') + '">' + esc(optionLabel(RUNTIMES, runtime)) + '</span></div></div></div>' +
-      '</button>';
+      '</button><button class="mainItemDelete" data-action="delete-card" data-id="' + esc(device.id) + '" title="删除设备" aria-label="删除设备 ' + esc(device.name || 'device') + '">&times;</button></div>';
     }).join('') + '</div>' : '<div class="mainEmpty"><strong>' + TXT.empty + '</strong><div>' + TXT.emptyHint + '</div></div>';
   }
 
@@ -630,7 +639,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
     payload.airsimVehicleName = payload.uav.vehicleName || payload.airsimVehicleName || payload.name || 'Drone1';
     payload.uav.px4AutostartId = profile.px4AutostartId;
     payload.uav.projectAirsimAirframe = profile.projectAirsimAirframe;
-    payload.uav.robotTemplate = payload.uav.robotTemplate || 'robot_quadrotor_px4.jsonc';
+    payload.uav.robotTemplate = profile.robotTemplate;
     payload.uav.vehicleName = payload.airsimVehicleName;
     payload.simulation.engine = 'project-airsim-px4';
     payload.simulation.model = profile.value;
@@ -769,6 +778,8 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
       render();
     } else if (action === 'select') {
       selectDevice(actionEl.getAttribute('data-id') || '');
+    } else if (action === 'delete-card') {
+      void deleteDevice(actionEl.getAttribute('data-id') || '');
     } else if (action === 'save') {
       void saveDevice(false);
     } else if (action === 'save-bind') {
@@ -947,8 +958,20 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f6f8fb;col
     state.devices = api.loadDroneDevices ? await api.loadDroneDevices() : [];
     state.draft = null;
     state.selectedId = '';
+    if (INITIAL_DEVICE_ID && state.devices.some(device => String(device.id || '') === INITIAL_DEVICE_ID)) {
+      selectDevice(INITIAL_DEVICE_ID);
+      return;
+    }
     render();
   }
+  window.fleetDockDeviceManager = {
+    selectDevice: function(id) {
+      const selectedId = String(id || '');
+      if (state.devices.some(device => String(device.id || '') === selectedId)) {
+        selectDevice(selectedId);
+      }
+    }
+  };
   init().catch(() => {
     state.devices = [];
     state.draft = null;
@@ -969,5 +992,6 @@ export namespace DeviceManagerDialog {
     isDarkTheme: boolean;
     parent: BrowserWindow;
     workingDirectory?: string;
+    initialDeviceId?: string;
   }
 }

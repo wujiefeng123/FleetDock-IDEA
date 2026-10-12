@@ -10,6 +10,7 @@ import log from 'electron-log';
 import { AddressInfo, createServer, Socket } from 'net';
 import { app, nativeTheme } from 'electron';
 import { IPythonEnvironment } from './tokens';
+import { APP_DATA_NAME } from './branding';
 import {
   exec,
   execFile,
@@ -81,7 +82,7 @@ export function getBundledPythonInstallDir(): string {
   // conda environments cannot be installed to such paths
   const installDir =
     process.platform === 'darwin'
-      ? path.normalize(path.join(app.getPath('home'), 'Library', app.getName()))
+      ? path.normalize(path.join(app.getPath('home'), 'Library', APP_DATA_NAME))
       : app.getPath('userData');
 
   try {
@@ -473,37 +474,40 @@ export function createTempFile(
 }
 
 export function pythonPathForEnvPath(envPath: string, isConda?: boolean) {
+  const platformPath = process.platform === 'win32' ? path.win32 : path.posix;
   if (process.platform === 'win32') {
     if (isConda === undefined) {
       isConda = isCondaEnv(envPath);
     }
     return isConda
-      ? path.join(envPath, 'python.exe')
-      : path.join(envPath, 'Scripts', 'python.exe');
+      ? platformPath.join(envPath, 'python.exe')
+      : platformPath.join(envPath, 'Scripts', 'python.exe');
   } else {
-    return path.join(envPath, 'bin', 'python');
+    return platformPath.join(envPath, 'bin', 'python');
   }
 }
 
 export function envPathForPythonPath(pythonPath: string): string {
   const isWin = process.platform === 'win32';
-  let envPath = path.dirname(pythonPath);
-  if (!isWin || path.basename(envPath) === 'Scripts') {
-    envPath = path.normalize(path.join(envPath, '../'));
+  const platformPath = isWin ? path.win32 : path.posix;
+  let envPath = platformPath.dirname(pythonPath);
+  if (!isWin || platformPath.basename(envPath) === 'Scripts') {
+    envPath = platformPath.normalize(platformPath.join(envPath, '../'));
   }
 
   return envPath;
 }
 
 export function activatePathForEnvPath(envPath: string) {
+  const platformPath = process.platform === 'win32' ? path.win32 : path.posix;
   return process.platform === 'win32'
-    ? path.join(envPath, 'Scripts', 'activate.bat')
-    : path.join(envPath, 'bin', 'activate');
+    ? platformPath.join(envPath, 'Scripts', 'activate.bat')
+    : platformPath.join(envPath, 'bin', 'activate');
 }
 
 export function condaSourcePathForEnvPath(envPath: string) {
   if (process.platform !== 'win32') {
-    return path.join(envPath, 'etc', 'profile.d', 'conda.sh');
+    return path.posix.join(envPath, 'etc', 'profile.d', 'conda.sh');
   }
 }
 
@@ -638,16 +642,22 @@ export function createUnsignScriptInEnv(envPath: string): string {
 export function getLogFilePath(processType: 'main' | 'renderer' = 'main') {
   switch (process.platform) {
     case 'win32':
-      return path.join(getUserDataDir(), `\\logs\\${processType}.log`);
+      return path.win32.join(getUserDataDir(), 'logs', `${processType}.log`);
     case 'darwin':
-      return path.join(
+      return path.posix.join(
         getUserHomeDir(),
-        `/Library/Logs/jupyterlab-desktop/${processType}.log`
+        'Library',
+        'Logs',
+        'jupyterlab-desktop',
+        `${processType}.log`
       );
     default:
-      return path.join(
+      return path.posix.join(
         getUserHomeDir(),
-        `/.config/jupyterlab-desktop/logs/${processType}.log`
+        '.config',
+        'jupyterlab-desktop',
+        'logs',
+        `${processType}.log`
       );
   }
 }

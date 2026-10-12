@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { nativeTheme } from 'electron';
+import { app, nativeTheme } from 'electron';
 import log from 'electron-log';
 
 vi.mock('fs', async () => {
@@ -51,6 +51,7 @@ import {
   deletePythonEnvironment,
   EnvironmentDeleteStatus,
   envPathForPythonPath,
+  getBundledPythonInstallDir,
   getFreePort,
   getJlabCLICommandSymlinkPath,
   getJlabCLICommandTargetPath,
@@ -211,7 +212,7 @@ describe('condaSourcePathForEnvPath', () => {
 describe('jupyterEnvInstallInfoPathForEnvPath', () => {
   it('returns .jupyter/env.json path', () => {
     expect(jupyterEnvInstallInfoPathForEnvPath('/env')).toBe(
-      '/env/.jupyter/env.json'
+      path.join('/env', '.jupyter', 'env.json')
     );
   });
 });
@@ -376,6 +377,23 @@ describe('getLogFilePath', () => {
   it('returns path under userData on windows', () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
     expect(getLogFilePath()).toContain('logs');
+  });
+});
+
+describe('getBundledPythonInstallDir', () => {
+  const originalPlatform = process.platform;
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
+  it('uses the fixed FleetDock data name on macOS', () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    vi.mocked(app.getPath).mockReturnValueOnce('/Users/fleetdock');
+
+    expect(getBundledPythonInstallDir()).toBe(
+      path.normalize('/Users/fleetdock/Library/fleetdock-idea')
+    );
   });
 });
 
@@ -714,7 +732,7 @@ describe('createTempFile', () => {
   it('returns path inside the temp dir', () => {
     const result = createTempFile('run.sh');
     expect(result).toContain('run.sh');
-    expect(result).toContain('/tmp/jlab_desktop_abc');
+    expect(result).toContain(path.join('/tmp', 'jlab_desktop_abc'));
   });
 
   it('uses defaults when called with no args', () => {

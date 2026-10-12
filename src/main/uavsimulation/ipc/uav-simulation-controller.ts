@@ -84,6 +84,22 @@ export class UavSimulationController {
     );
 
     evm.registerSyncEventHandler(
+      EventTypeMain.UavSimulationDirectorySelect,
+      async (
+        event,
+        request: {
+          field?: 'px4Path' | 'scenePackageDirectory';
+          currentPath?: string;
+        }
+      ) => {
+        if (!this._options.isUavManagerSender(event.sender)) {
+          return null;
+        }
+        return this.selectConfigDirectory(request || {});
+      }
+    );
+
+    evm.registerSyncEventHandler(
       EventTypeMain.UavSimulationSceneAddDirectory,
       async event => {
         if (!this._options.isUavManagerSender(event.sender)) {
@@ -217,6 +233,32 @@ export class UavSimulationController {
   }): UavSimulationSceneState {
     this._sceneStore.saveConfig(config);
     return this._scanConfiguredScenePackageDirectory();
+  }
+
+  async selectConfigDirectory(request: {
+    field?: 'px4Path' | 'scenePackageDirectory';
+    currentPath?: string;
+  }): Promise<string | null> {
+    if (
+      request.field !== 'px4Path' &&
+      request.field !== 'scenePackageDirectory'
+    ) {
+      return null;
+    }
+    const state = this._sceneStore.load();
+    const isPx4Path = request.field === 'px4Path';
+    const { canceled, filePaths } = await dialog.showOpenDialog(
+      this._options.parent,
+      {
+        title: isPx4Path ? '选择 PX4 目录' : '选择 Project AirSim 场景包目录',
+        buttonLabel: '选择文件夹',
+        defaultPath:
+          String(request.currentPath || '').trim() ||
+          (isPx4Path ? state.px4Path : state.scenePackageDirectory),
+        properties: ['openDirectory']
+      }
+    );
+    return canceled || !filePaths.length ? null : filePaths[0];
   }
 
   deleteScene(sceneId: string): UavSimulationSceneState {

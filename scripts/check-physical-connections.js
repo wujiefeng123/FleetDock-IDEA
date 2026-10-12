@@ -105,9 +105,10 @@ assert.deepStrictEqual(
 
 assert.strictEqual(portModule.SIMULATION_MAVLINK_PORT_MIN, 14600);
 assert.strictEqual(portModule.SIMULATION_MAVLINK_PORT_MAX, 14699);
+assert.strictEqual(portModule.SIMULATION_MAVSDK_SERVER_PORT_MIN, undefined);
 assert.strictEqual(
-  portModule.mavsdkServerPortForSimulationMavlinkPort(14600),
-  50600
+  portModule.mavsdkServerPortForSimulationMavlinkPort,
+  undefined
 );
 
 console.log('Physical PX4 connection checks passed.');

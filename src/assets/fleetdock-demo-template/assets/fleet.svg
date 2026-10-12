@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="554" viewBox="0 0 1200 554">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#eef5ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="554" rx="32" fill="url(#bg)"/>
+  <rect x="48" y="38" width="10" height="92" rx="5" fill="#ea580c"/>
+  <text x="82" y="78" fill="#0f172a" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="34" font-weight="800">Fleet 多设备协同</text>
+  <text x="82" y="116" fill="#64748b" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="18">同一套标准接口同时作用于多架无人机或异构设备</text>
+  <g filter="url(#shadow)" font-family="Microsoft YaHei, Segoe UI, sans-serif">
+
+      <g>
+        <rect x="59" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="208" r="20" fill="#ea580c"/>
+        <text x="97" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">1</text>
+        <text x="131" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">设备集合</text>
+        <text x="87" y="257" fill="#475569"
+              font-size="16">Fleet 统一管理成员</text>
+      </g>
+
+      <g>
+        <rect x="435" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="208" r="20" fill="#ea580c"/>
+        <text x="473" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">2</text>
+        <text x="507" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">筛选</text>
+        <text x="463" y="257" fill="#475569"
+              font-size="16">按类型、能力和标签分组</text>
+      </g>
+
+      <g>
+        <rect x="811" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="208" r="20" fill="#ea580c"/>
+        <text x="849" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">3</text>
+        <text x="883" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">批量连接</text>
+        <text x="839" y="257" fill="#475569"
+              font-size="16">一次得到每台设备结果</text>
+      </g>
+
+      <g>
+        <rect x="59" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="376" r="20" fill="#ea580c"/>
+        <text x="97" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">4</text>
+        <text x="131" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Fleet Plan</text>
+        <text x="87" y="425" fill="#475569"
+              font-size="16">对成员执行同类任务</text>
+      </g>
+
+      <g>
+        <rect x="435" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="376" r="20" fill="#ea580c"/>
+        <text x="473" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">5</text>
+        <text x="507" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">编队</text>
+        <text x="463" y="425" fill="#475569"
+              font-size="16">FormationLayout 分配槽位</text>
+      </g>
+
+      <g>
+        <rect x="811" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="376" r="20" fill="#ea580c"/>
+        <text x="849" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">6</text>
+        <text x="883" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">跟随</text>
+        <text x="839" y="425" fill="#475569"
+              font-size="16">FollowSession 管理协同关系</text>
+      </g>
+  </g>
+</svg>

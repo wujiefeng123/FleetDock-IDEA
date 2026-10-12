@@ -5,17 +5,9 @@
 
 export const SIMULATION_MAVLINK_PORT_MIN = 14600;
 export const SIMULATION_MAVLINK_PORT_MAX = 14699;
-export const SIMULATION_MAVSDK_SERVER_PORT_MIN = 50600;
 
 export function allocatePort(index: number): number {
   return SIMULATION_MAVLINK_PORT_MIN + index;
-}
-
-export function mavsdkServerPortForSimulationMavlinkPort(port: number): number {
-  // [UAV-IDE MODIFY] Keep MAVSDK gRPC ports stable per simulation MAVLink port so stale servers are easy to identify and clean.
-  return (
-    SIMULATION_MAVSDK_SERVER_PORT_MIN + (port - SIMULATION_MAVLINK_PORT_MIN)
-  );
 }
 
 export function allocateUniqueSimulationMavlinkPort(

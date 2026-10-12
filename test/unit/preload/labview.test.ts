@@ -32,6 +32,7 @@ describe('labview preload', () => {
         'listUavSimulationScenes',
         'saveUavSimulationConfig',
         'addUavSimulationSceneDirectory',
+        'selectUavSimulationDirectory',
         'updateUavSimulationScene',
         'deleteUavSimulationScene',
         'startUavSimulation',
@@ -42,6 +43,11 @@ describe('labview preload', () => {
         'closeUavSimulationWebRtcSession',
         'executeUavSimulationCommand',
         'getFleetDockHudSnapshot',
+        'getGroundStationStatus',
+        'launchGroundStation',
+        'closeGroundStation',
+        'selectGroundStationExecutable',
+        'openGroundStationInstallDirectory',
         'runFleetDockDebugCommand',
         'openFleetDockHudWindows'
       ].sort()

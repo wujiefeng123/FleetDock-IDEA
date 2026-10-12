@@ -1,12 +1,18 @@
 <svg width="360" height="300" viewBox="0 0 360 300" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- [UAV-IDE MODIFY] Show FleetDock IDEA as one development hub for aerial, ground, and robotic systems. -->
   <g opacity="0.78" stroke="#25658C" stroke-width="2.5" stroke-linecap="round">
-    <path d="M92 68C54 93 36 136 42 178"/>
-    <path d="M49 199C61 231 87 255 119 267"/>
-    <path d="M142 273C171 279 202 277 229 268"/>
-    <path d="M252 257C282 240 304 211 313 179"/>
-    <path d="M317 154C319 122 307 91 285 68"/>
-    <path d="M265 50C243 34 218 25 192 23"/>
+    <!-- All six segments share the same center and radius as the moving dot. -->
+    <path d="M215.46 17.67A137 137 0 0 1 300.96 85.68"/>
+    <path d="M308.74 103.14A137 137 0 0 1 306.11 203.53"/>
+    <path d="M260.53 260.84A137 137 0 0 1 187.17 286.81"/>
+    <path d="M168.06 286.48A137 137 0 0 1 99.47 260.84"/>
+    <path d="M53.89 203.53A137 137 0 0 1 51.26 103.14"/>
+    <path d="M59.04 85.68A137 137 0 0 1 144.54 17.67"/>
+  </g>
+
+  <g>
+    <circle cx="180" cy="13" r="7" fill="#22D3EE" filter="url(#dotGlow)"/>
+    <animateTransform attributeName="transform" type="rotate" from="0 180 150" to="360 180 150" dur="4.2s" repeatCount="indefinite"/>
   </g>
 
   <path d="M180 69V96M102 221L132 190M258 221L228 190" stroke="#6FA9C8" stroke-width="2.5"/>
@@ -27,7 +33,7 @@
     <path d="M143 179L180 200L217 179" stroke="#3EC3E6" stroke-width="2" opacity="0.7"/>
   </g>
 
-  <g>
+  <g transform="translate(0 -10)">
     <circle cx="180" cy="45" r="34" fill="#F8FCFF" fill-opacity="0.92" stroke="#22577A" stroke-width="2"/>
     <!-- Aerial systems -->
     <g stroke="#174A73" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
@@ -66,11 +72,6 @@
     </g>
   </g>
 
-  <g>
-    <circle cx="316" cy="111" r="7" fill="#22D3EE" filter="url(#dotGlow)"/>
-    <animateTransform attributeName="transform" type="rotate" from="0 180 150" to="360 180 150" dur="4.2s" repeatCount="indefinite"/>
-  </g>
-
   <defs>
     <linearGradient id="hubBody" x1="144" y1="105" x2="218" y2="202" gradientUnits="userSpaceOnUse">
       <stop stop-color="#2B6C98"/>
@@ -80,7 +81,7 @@
     <filter id="hubShadow" x="100" y="74" width="160" height="172" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#2563EB" flood-opacity="0.18"/>
     </filter>
-    <filter id="dotGlow" x="297" y="92" width="38" height="38" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+    <filter id="dotGlow" x="161" y="-6" width="38" height="38" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#22D3EE" flood-opacity="0.7"/>
     </filter>
   </defs>

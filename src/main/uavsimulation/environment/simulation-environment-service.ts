@@ -1,6 +1,8 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
+/* eslint-disable no-control-regex -- [UAV-IDE MODIFY] Environment output cleanup intentionally strips terminal control characters. */
+
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';

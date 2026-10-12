@@ -6,7 +6,8 @@ const { contextBridge, ipcRenderer } = electron;
 type ShowProgressListener = (
   title: string,
   detail: string,
-  showAnimation: boolean
+  showAnimation: boolean,
+  renderRequestId: number
 ) => void;
 type InstallBundledPythonEnvStatusListener = (
   status: string,
@@ -28,6 +29,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShowProgress: (callback: ShowProgressListener) => {
     onShowProgressListener = callback;
   },
+  // [UAV-IDE MODIFY] Expose only the dedicated first-paint acknowledgement.
+  notifyProgressViewPainted: (renderRequestId: number) => {
+    ipcRenderer.send(EventTypeMain.ProgressViewPainted, renderRequestId);
+  },
   sendMessageToMain: (message: string, ...args: any[]) => {
     ipcRenderer.send(message, ...args);
   },
@@ -43,9 +48,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 ipcRenderer.on(
   EventTypeRenderer.ShowProgress,
-  (event, title, detail, showAnimation) => {
+  (event, title, detail, showAnimation, renderRequestId) => {
     if (onShowProgressListener) {
-      onShowProgressListener(title, detail, showAnimation);
+      onShowProgressListener(title, detail, showAnimation, renderRequestId);
     }
   }
 );

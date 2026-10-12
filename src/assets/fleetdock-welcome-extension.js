@@ -60,12 +60,7 @@
     const hero = element('section', 'fleetdock-welcome-hero');
     const heroText = element('div', 'fleetdock-welcome-hero-copy');
     heroText.append(
-      element('h1', 'fleetdock-welcome-hero-title', 'FleetDock IDEA 工作台'),
-      element(
-        'p',
-        'fleetdock-welcome-hero-text',
-        '面向大学生的低空智能开发环境：Notebook、仿真、设备和应用发布集中在一处。'
-      )
+      element('h1', 'fleetdock-welcome-hero-title', 'FleetDock IDEA 工作台')
     );
     const heroMark = element('div', 'fleetdock-welcome-hero-mark');
     heroMark.setAttribute('aria-hidden', 'true');
@@ -157,12 +152,17 @@
         }
         row.insertAdjacentElement('afterbegin', main);
         row.insertAdjacentElement('afterbegin', avatar);
+        installRecentSessionInteraction(row);
       }
 
       const emptyMessage = recentList.querySelector('.no-recent-message');
-      if (emptyMessage) {
-        emptyMessage.textContent =
-          '暂无最近应用，点击“新建应用”开始创建 FleetDock 工作空间。';
+      const emptyMessageText =
+        '暂无最近应用，点击“新建应用”开始创建 FleetDock 工作空间。';
+      // [UAV-IDE MODIFY] Avoid retriggering the recent-list observer when the
+      // desired copy is already present; assigning textContent unconditionally
+      // creates a self-sustaining mutation loop and freezes the welcome view.
+      if (emptyMessage && emptyMessage.textContent !== emptyMessageText) {
+        emptyMessage.textContent = emptyMessageText;
       }
       count.textContent = applySearch(rows, searchInput.value) + ' 个应用';
       decorating = false;
@@ -180,6 +180,35 @@
     decorateRecentSessions();
     searchInput.focus({ preventScroll: true });
     return root;
+  }
+
+  function installRecentSessionInteraction(row) {
+    // [UAV-IDE MODIFY] Make the whole visual application card match its
+    // pointer affordance while preserving the dedicated remove action.
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    const open = event => {
+      if (
+        row.dataset.fleetdockOpening === 'true' ||
+        event.target.closest('.recent-session-delete')
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      row.dataset.fleetdockOpening = 'true';
+      row.setAttribute('aria-busy', 'true');
+      const sessionIndex = Number.parseInt(row.dataset.sessionIndex, 10);
+      if (Number.isInteger(sessionIndex)) {
+        window.electronAPI.openRecentSession(sessionIndex);
+      }
+    };
+    row.addEventListener('click', open, true);
+    row.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        open(event);
+      }
+    });
   }
 
   function makeInitials(text) {

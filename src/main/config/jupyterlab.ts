@@ -26,33 +26,6 @@ const MAIN_MENU_SETTINGS = {
     {
       id: 'jp-mainmenu-help',
       disabled: true
-    },
-    {
-      id: 'jlabDesktop-mainmenu-app',
-      label: '\u5e94\u7528',
-      rank: 95,
-      items: [
-        {
-          command: 'jlabDesktop:app-settings',
-          rank: 10
-        },
-        {
-          command: 'jlabDesktop:app-publish',
-          rank: 20
-        }
-      ]
-    },
-    {
-      // [UAV-IDE MODIFY] Register the Device menu so the global UAV device library is reachable from the top menu bar.
-      id: 'jlabDesktop-mainmenu-device',
-      label: '\u8bbe\u5907',
-      rank: 97,
-      items: [
-        {
-          command: 'jlabDesktop:device-manager',
-          rank: 10
-        }
-      ]
     }
   ]
 };

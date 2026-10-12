@@ -15,8 +15,8 @@ export const fleetDockLabPreloadApi = {
   showCodeAppCenterPublish: () => {
     ipcRenderer.send(EventTypeMain.ShowCodeAppCenterPublish);
   },
-  openDeviceManager: () => {
-    ipcRenderer.send(EventTypeMain.OpenDeviceManager);
+  openDeviceManager: (deviceId?: string) => {
+    ipcRenderer.send(EventTypeMain.OpenDeviceManager, deviceId);
   },
   getSkyLabWorkspaceContext: () =>
     ipcRenderer.invoke(EventTypeMain.SkyLabWorkspaceGetContext),
@@ -33,6 +33,8 @@ export const fleetDockLabPreloadApi = {
     ipcRenderer.invoke(EventTypeMain.UavSimulationSceneList),
   saveUavSimulationConfig: (config: unknown) =>
     ipcRenderer.invoke(EventTypeMain.UavSimulationConfigSave, config),
+  selectUavSimulationDirectory: (request: unknown) =>
+    ipcRenderer.invoke(EventTypeMain.UavSimulationDirectorySelect, request),
   addUavSimulationSceneDirectory: () =>
     ipcRenderer.invoke(EventTypeMain.UavSimulationSceneAddDirectory),
   updateUavSimulationScene: (scene: unknown) =>
@@ -54,6 +56,16 @@ export const fleetDockLabPreloadApi = {
     ipcRenderer.invoke(EventTypeMain.UavSimulationCommand, request),
   getFleetDockHudSnapshot: () =>
     ipcRenderer.invoke(EventTypeMain.FleetDockHudSnapshot),
+  getGroundStationStatus: () =>
+    ipcRenderer.invoke(EventTypeMain.GroundStationStatus),
+  launchGroundStation: () =>
+    ipcRenderer.invoke(EventTypeMain.GroundStationLaunch),
+  closeGroundStation: () =>
+    ipcRenderer.invoke(EventTypeMain.GroundStationClose),
+  selectGroundStationExecutable: () =>
+    ipcRenderer.invoke(EventTypeMain.GroundStationSelectExecutable),
+  openGroundStationInstallDirectory: () =>
+    ipcRenderer.invoke(EventTypeMain.GroundStationOpenInstallDirectory),
   runFleetDockDebugCommand: (request: unknown) =>
     ipcRenderer.invoke(EventTypeMain.FleetDockDebugCommand, request),
   openFleetDockHudWindows: (devices: unknown[]) =>

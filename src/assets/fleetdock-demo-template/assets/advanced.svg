@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="554" viewBox="0 0 1200 554">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#eef5ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="554" rx="32" fill="url(#bg)"/>
+  <rect x="48" y="38" width="10" height="92" rx="5" fill="#0891b2"/>
+  <text x="82" y="78" fill="#0f172a" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="34" font-weight="800">协同与智能能力</text>
+  <text x="82" y="116" fill="#64748b" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="18">高层策略描述意图，控制循环和数据处理交给 FleetDock SDK</text>
+  <g filter="url(#shadow)" font-family="Microsoft YaHei, Segoe UI, sans-serif">
+
+      <g>
+        <rect x="59" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="208" r="20" fill="#0891b2"/>
+        <text x="97" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">1</text>
+        <text x="131" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">Formation</text>
+        <text x="87" y="257" fill="#475569"
+              font-size="16">V 型、纵队、网格等布局</text>
+      </g>
+
+      <g>
+        <rect x="435" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="208" r="20" fill="#0891b2"/>
+        <text x="473" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">2</text>
+        <text x="507" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">Follow</text>
+        <text x="463" y="257" fill="#475569"
+              font-size="16">相对、追踪、轨迹和视角跟随</text>
+      </g>
+
+      <g>
+        <rect x="811" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="208" r="20" fill="#0891b2"/>
+        <text x="849" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">3</text>
+        <text x="883" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">Manual Control</text>
+        <text x="839" y="257" fill="#475569"
+              font-size="16">标准机体系速度输入</text>
+      </g>
+
+      <g>
+        <rect x="59" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="376" r="20" fill="#0891b2"/>
+        <text x="97" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">4</text>
+        <text x="131" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Sensor Provider</text>
+        <text x="87" y="425" fill="#475569"
+              font-size="16">把标准样本转换为障碍物</text>
+      </g>
+
+      <g>
+        <rect x="435" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="376" r="20" fill="#0891b2"/>
+        <text x="473" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">5</text>
+        <text x="507" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Avoidance</text>
+        <text x="463" y="425" fill="#475569"
+              font-size="16">保持、返航或局部绕行</text>
+      </g>
+
+      <g>
+        <rect x="811" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="376" r="20" fill="#0891b2"/>
+        <text x="849" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">6</text>
+        <text x="883" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Extension</text>
+        <text x="839" y="425" fill="#475569"
+              font-size="16">设备工厂和自定义传感器</text>
+      </g>
+  </g>
+</svg>

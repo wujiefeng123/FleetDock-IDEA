@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
+import * as path from 'path';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -82,8 +83,11 @@ describe('ApplicationData.read', () => {
       Buffer.from(JSON.stringify({ condaRootPath: '/opt/conda' }))
     );
     appData.read();
-    expect(appData.condaPath).toContain('conda');
-    expect(appData.condaPath).toContain('/opt/conda');
+    const expected =
+      process.platform === 'win32'
+        ? path.join('/opt/conda', 'Scripts', 'conda.exe')
+        : path.join('/opt/conda', 'bin', 'conda');
+    expect(appData.condaPath).toBe(expected);
   });
 
   it('reads recentRemoteURLs list', () => {

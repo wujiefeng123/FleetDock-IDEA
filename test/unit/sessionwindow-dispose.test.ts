@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionWindow } from '../../src/main/sessionwindow/sessionwindow';
 import { LabView } from '../../src/main/labview/labview';
+import { appData } from '../../src/main/config/appdata';
 
 // Drive the real _disposeSession without the heavy constructor: create an
 // instance linked to the prototype and set only the fields the method reads.
@@ -22,6 +23,112 @@ describe('SessionWindow._disposeSession', () => {
 
     // Act + Assert: a second best-effort dispose must resolve, not reject.
     await expect(win._disposeSession()).resolves.toBeUndefined();
+  });
+});
+
+describe('SessionWindow welcome first paint', () => {
+  it('keeps the view hidden until welcome extensions are ready', async () => {
+    let markReady: (ready: boolean) => void = () => undefined;
+    const welcomeReady = new Promise<boolean>(resolve => (markReady = resolve));
+    const setVisible = vi.fn();
+    const welcomeView = {
+      view: {
+        setVisible,
+        webContents: { isDestroyed: vi.fn().mockReturnValue(false) }
+      }
+    };
+    const win = makeWindow({ _welcomeView: welcomeView });
+
+    win._showWelcomeViewWhenReady(welcomeView, welcomeReady);
+    await Promise.resolve();
+
+    expect(setVisible).not.toHaveBeenCalled();
+
+    markReady(true);
+    await welcomeReady;
+    await Promise.resolve();
+
+    expect(setVisible).toHaveBeenCalledOnce();
+    expect(setVisible).toHaveBeenCalledWith(true);
+  });
+
+  it('shows an error view instead of exposing the upstream welcome page when decoration fails', async () => {
+    const setVisible = vi.fn();
+    const showProgressView = vi.fn();
+    const welcomeView = {
+      view: {
+        setVisible,
+        webContents: { isDestroyed: vi.fn().mockReturnValue(false) }
+      }
+    };
+    const win = makeWindow({
+      _welcomeView: welcomeView,
+      _showProgressView: showProgressView
+    });
+
+    win._showWelcomeViewWhenReady(welcomeView, Promise.resolve(false));
+    await Promise.resolve();
+
+    expect(setVisible).not.toHaveBeenCalled();
+    expect(showProgressView).toHaveBeenCalledWith(
+      '欢迎页加载失败',
+      expect.any(String),
+      false
+    );
+  });
+});
+
+describe('SessionWindow recent application transition', () => {
+  it('hides the title bar while an animated transition is visible', () => {
+    const setTitleBarVisible = vi.fn();
+    const progressView = {
+      view: { view: {} },
+      setProgress: vi.fn().mockReturnValue(3)
+    };
+    const win = makeWindow({
+      _window: { contentView: { addChildView: vi.fn() } },
+      _titleBarView: {
+        view: { setVisible: setTitleBarVisible },
+        showServerStatus: vi.fn()
+      },
+      _progressView: progressView,
+      _progressViewVisible: false,
+      _resizeViews: vi.fn()
+    });
+
+    expect(win._showProgressView('正在打开应用')).toBe(3);
+
+    expect(setTitleBarVisible).toHaveBeenCalledWith(false);
+    expect(win._progressViewFullscreen).toBe(true);
+  });
+
+  it('shows the transition before starting synchronous session preparation', async () => {
+    const recentSessions = appData.recentSessions;
+    const showProgressView = vi.fn().mockReturnValue(7);
+    const createSessionForRecent = vi.fn();
+    const win = makeWindow({
+      _showProgressView: showProgressView,
+      _createSessionForRecent: createSessionForRecent
+    });
+
+    try {
+      appData.recentSessions = [
+        { workingDirectory: 'D:\\SkyLab\\transition-test', filesToOpen: [] }
+      ];
+      win._queueRecentSessionOpen(0);
+
+      expect(showProgressView).toHaveBeenCalledWith('正在打开应用');
+      expect(createSessionForRecent).not.toHaveBeenCalled();
+
+      win._continueRecentSessionOpenAfterPaint(6);
+      expect(createSessionForRecent).not.toHaveBeenCalled();
+
+      win._continueRecentSessionOpenAfterPaint(7);
+
+      expect(createSessionForRecent).toHaveBeenCalledWith(0, undefined);
+    } finally {
+      appData.recentSessions = recentSessions;
+    }
   });
 });
 

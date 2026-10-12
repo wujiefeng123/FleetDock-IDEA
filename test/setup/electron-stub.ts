@@ -11,6 +11,11 @@ const userDataPath = join(tmpdir(), 'jlab-test-userdata');
 
 export const app = {
   getPath: vi.fn((name: string) => join(userDataPath, name)),
+  setPath: vi.fn(),
+  setAppLogsPath: vi.fn(),
+  commandLine: {
+    hasSwitch: vi.fn(() => false)
+  },
   getVersion: vi.fn(() => '4.4.7'),
   getName: vi.fn(() => 'JupyterLab'),
   isPackaged: false,

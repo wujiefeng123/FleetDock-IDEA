@@ -113,9 +113,11 @@ vi.mock('https', () => ({
 }));
 
 import { JupyterServer } from '../../src/main/server';
+import { createTempFile } from '../../src/main/utils';
 import { IEnvironmentType } from '../../src/main/tokens';
 
 const mockExecFile = vi.mocked(execFile);
+const mockCreateTempFile = vi.mocked(createTempFile);
 
 function makeChild() {
   return {
@@ -186,5 +188,45 @@ describe('JupyterServer.start env isolation', () => {
       env: NodeJS.ProcessEnv;
     };
     expect(options.env.JUPYTER_CONFIG_DIR).toBe('/override/config');
+  });
+});
+
+describe('JupyterServer Windows launch script', () => {
+  it('writes batch files with CRLF line endings', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(
+      process,
+      'platform'
+    );
+    Object.defineProperty(process, 'platform', {
+      configurable: true,
+      value: 'win32'
+    });
+
+    try {
+      const server = new JupyterServer({
+        environment: {
+          path: 'C:\\envs\\e2e\\python.exe',
+          name: 'e2e',
+          type: IEnvironmentType.CondaRoot,
+          versions: {},
+          defaultKernel: 'python3'
+        },
+        workingDirectory: 'C:\\work'
+      });
+
+      void server.start().catch(() => undefined);
+      await flush();
+
+      expect(mockCreateTempFile).toHaveBeenCalledTimes(1);
+      const [fileName, scriptContents] = mockCreateTempFile.mock.calls[0];
+      expect(fileName).toBe('launch.bat');
+      expect(scriptContents).toContain('\r\n');
+      expect(scriptContents.replace(/\r\n/g, '')).not.toContain('\n');
+      expect(scriptContents).toContain(
+        '--ServerApp.root_dir="C:\\work"'
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', platformDescriptor);
+    }
   });
 });

@@ -6,7 +6,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { ThemedWindow } from '../dialog/themedwindow';
 import { app } from 'electron';
-import { PRODUCT_NAME } from '../branding';
+import {
+  PRODUCT_NAME,
+  PRODUCT_TEAM_NAME,
+  UPSTREAM_PRODUCT_NAME
+} from '../branding';
 
 export class AboutDialog {
   constructor(options: AboutDialog.IOptions) {
@@ -15,7 +19,7 @@ export class AboutDialog {
       // [UAV-IDE MODIFY] Keep the upstream dialog behavior and only replace product identity.
       title: `About ${PRODUCT_NAME}`,
       width: 400,
-      height: 275,
+      height: 320,
       preload: path.join(__dirname, './preload.js')
     });
 
@@ -58,11 +62,12 @@ export class AboutDialog {
         .app-version {
           color: var(--neutral-foreground-hint);
         }
-        .about-jupyter-row {
-          margin: 20px 0;
+        .product-copyright-row {
+          margin: 20px 0 8px;
         }
-        .copyright-row {
-          margin: 10px 0;
+        .upstream-row {
+          margin: 4px 0;
+          color: var(--neutral-foreground-hint);
         }
       </style>
       <div class="dialog-container">
@@ -79,12 +84,17 @@ export class AboutDialog {
             </div>
           </div>
         </div>
-        <div class="row about-jupyter-row">
-          <a href="javascript:void(0)" onclick='handleAboutProjectJupyterLink(this);'>About Project Jupyter</a>
+        <div class="row product-copyright-row">
+          © <%= thisYear %> ${PRODUCT_TEAM_NAME}
         </div>
-
-        <div class="row copyright-row">
+        <div class="row upstream-row">
+          Built on ${UPSTREAM_PRODUCT_NAME}
+        </div>
+        <div class="row upstream-row">
           © 2015-<%= thisYear %>  Project Jupyter Contributors
+        </div>
+        <div class="row upstream-row">
+          <a href="javascript:void(0)" onclick='handleAboutProjectJupyterLink(this);'>About Project Jupyter</a>
         </div>
 
         <script>

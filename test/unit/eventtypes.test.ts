@@ -13,6 +13,7 @@ describe('EventTypeMain channel strings', () => {
     [EventTypeMain.CreateNewSession, 'create-new-session'],
     [EventTypeMain.CreateNewRemoteSession, 'create-new-remote-session'],
     [EventTypeMain.OpenRecentSession, 'open-recent-session'],
+    [EventTypeMain.ProgressViewPainted, 'progress-view-painted'],
     [EventTypeMain.DeleteRecentSession, 'delete-recent-session'],
     [EventTypeMain.OpenDroppedFiles, 'open-dropped-files'],
     [EventTypeMain.RestartSession, 'restart-session'],
@@ -58,7 +59,9 @@ describe('FleetDockEventTypeMain channel strings', () => {
     [FleetDockEventTypeMain.CreateNewApplication, 'create-new-application'],
     [FleetDockEventTypeMain.OpenDeviceManager, 'open-device-manager'],
     [FleetDockEventTypeMain.UavSimulationStart, 'uav-simulation-start'],
-    [FleetDockEventTypeMain.FleetDockHudSnapshot, 'fleetdock-hud-snapshot']
+    [FleetDockEventTypeMain.FleetDockHudSnapshot, 'fleetdock-hud-snapshot'],
+    [FleetDockEventTypeMain.GroundStationStatus, 'groundstation-status'],
+    [FleetDockEventTypeMain.GroundStationLaunch, 'groundstation-launch']
   ])('"%s" stays stable', (value, expected) => {
     expect(value).toBe(expected);
   });

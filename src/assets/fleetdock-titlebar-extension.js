@@ -8,6 +8,15 @@
     return;
   }
 
+  // [UAV-IDE MODIFY] Hide the upstream environment shortcut in FleetDock's
+  // simplified chrome without disabling environment management itself.
+  const serverButton = document.getElementById('server-button');
+  if (serverButton) {
+    serverButton.hidden = true;
+    serverButton.setAttribute('aria-hidden', 'true');
+    serverButton.style.setProperty('display', 'none', 'important');
+  }
+
   // [UAV-IDE MODIFY] Preserve useful document context while replacing upstream
   // product branding in the persistent desktop chrome.
   let normalizing = false;

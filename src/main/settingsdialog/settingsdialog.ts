@@ -34,6 +34,7 @@ export class SettingsDialog {
       theme,
       syncJupyterLabTheme,
       showNewsFeed,
+      updatesEnabled,
       checkForUpdatesAutomatically,
       notifyOnBundledEnvUpdates,
       updateBundledEnvAutomatically,
@@ -47,7 +48,8 @@ export class SettingsDialog {
       uiModeForSingleFileOpen,
       showTOCInZenMode
     } = options;
-    const installUpdatesAutomaticallyEnabled = process.platform === 'darwin';
+    const installUpdatesAutomaticallyEnabled =
+      updatesEnabled && process.platform === 'darwin';
     const installUpdatesAutomatically =
       installUpdatesAutomaticallyEnabled && options.installUpdatesAutomatically;
     const cliCommandIsSetup = jlabCLICommandIsSetup();
@@ -415,21 +417,25 @@ export class SettingsDialog {
               </div>
 
               <div class="row setting-section">
+                <% if (updatesEnabled) { %>
                 <div class="row">
                   <jp-checkbox id='checkbox-update-check' type='checkbox' <%= checkForUpdatesAutomatically ? 'checked' : '' %> onchange='handleAutoCheckForUpdates(this);'>Check for updates automatically</jp-checkbox>
                 </div>
                 <div class="row">
                   <jp-checkbox id='checkbox-update-install' type='checkbox' <%= installUpdatesAutomatically ? 'checked' : '' %> <%= installUpdatesAutomaticallyEnabled ? '' : 'disabled' %>>Download and install updates automatically</jp-checkbox>
                 </div>
+                <% } %>
                 <div class="row">
                   <jp-checkbox id='notify-on-bundled-env-updates' type='checkbox' <%= notifyOnBundledEnvUpdates ? 'checked' : '' %> onchange='handleAutoCheckForUpdates(this);'>Show bundled environment update notifications</jp-checkbox><div class="info-icon" title="Show notification badge on session title bar and update action button on session environment selection popup.">${infoIconSrc}</div>
                 </div>
                 <div class="row">
                   <jp-checkbox id='update-bundled-env-automatically' type='checkbox' <%= updateBundledEnvAutomatically ? 'checked' : '' %>>Update bundled environment automatically when app is updated</jp-checkbox><div class="info-icon" title="This will delete the existing bundled environment installation and install the newer version whenever app is updated.">${infoIconSrc}</div>
                 </div>
+                <% if (updatesEnabled) { %>
                 <div class="row">
                   <jp-button onclick='handleCheckForUpdates(this);'>Check for updates now</jp-button>
                 </div>
+                <% } %>
               </div>
 
               <script>
@@ -446,10 +452,11 @@ export class SettingsDialog {
                 }
 
                 function updateAutoInstallCheckboxState() {
-                  if (<%= installUpdatesAutomaticallyEnabled ? 'true' : 'false' %> /* installUpdatesAutomaticallyEnabled */ &&
+                  if (autoUpdateCheckCheckbox && autoInstallCheckbox &&
+                    <%= installUpdatesAutomaticallyEnabled ? 'true' : 'false' %> /* installUpdatesAutomaticallyEnabled */ &&
                     autoUpdateCheckCheckbox.checked) {
                     autoInstallCheckbox.removeAttribute('disabled');
-                  } else {
+                  } else if (autoInstallCheckbox) {
                     autoInstallCheckbox.setAttribute('disabled', 'disabled');
                   }
                 }
@@ -517,8 +524,10 @@ export class SettingsDialog {
           window.electronAPI.setSyncJupyterLabTheme(syncJupyterLabThemeCheckbox.checked);
           const showNewsFeedCheckbox = document.getElementById('checkbox-show-news-feed');
           window.electronAPI.setShowNewsFeed(showNewsFeedCheckbox.checked);
-          window.electronAPI.setCheckForUpdatesAutomatically(autoUpdateCheckCheckbox.checked);
-          window.electronAPI.setInstallUpdatesAutomatically(autoInstallCheckbox.checked);
+          if (autoUpdateCheckCheckbox && autoInstallCheckbox) {
+            window.electronAPI.setCheckForUpdatesAutomatically(autoUpdateCheckCheckbox.checked);
+            window.electronAPI.setInstallUpdatesAutomatically(autoInstallCheckbox.checked);
+          }
           window.electronAPI.setSettings({
             notifyOnBundledEnvUpdates: notifyOnBundledEnvUpdatesCheckbox.checked,
             updateBundledEnvAutomatically: updateBundledEnvAutomaticallyCheckbox.checked,
@@ -555,6 +564,7 @@ export class SettingsDialog {
       theme,
       syncJupyterLabTheme,
       showNewsFeed,
+      updatesEnabled,
       checkForUpdatesAutomatically,
       installUpdatesAutomaticallyEnabled,
       installUpdatesAutomatically,
@@ -598,6 +608,7 @@ export namespace SettingsDialog {
     theme: ThemeType;
     syncJupyterLabTheme: boolean;
     showNewsFeed: boolean;
+    updatesEnabled: boolean;
     checkForUpdatesAutomatically: boolean;
     installUpdatesAutomatically: boolean;
     notifyOnBundledEnvUpdates: boolean;

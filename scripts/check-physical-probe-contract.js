@@ -2,12 +2,26 @@
 // exportable report without starting or retaining a physical connection.
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { app } = require('electron');
 
 app.whenReady().then(async () => {
-  const {
-    probePhysicalConnection
-  } = require('../build/out/main/devices/physical-connection-probe.js');
+  const probeModulePath = path.join(
+    __dirname,
+    '..',
+    'build',
+    'out',
+    'main',
+    'devices',
+    'physical-connection-probe.js'
+  );
+  const probeModuleSource = fs.readFileSync(probeModulePath, 'utf8');
+  assert(!probeModuleSource.includes('get_system_identity'));
+  assert(!probeModuleSource.includes('firmwareVersion'));
+  assert(!probeModuleSource.includes('hardwareUid'));
+  assert(probeModuleSource.includes('device.state.snapshot()'));
+  const { probePhysicalConnection } = require(probeModulePath);
   const report = await probePhysicalConnection({
     kind: 'serial',
     serialPort: 'COM9999',

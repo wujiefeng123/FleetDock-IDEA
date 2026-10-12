@@ -97,16 +97,32 @@ beforeEach(() => {
 });
 
 describe('launchCLIinEnvironment', () => {
-  it('spawns bash with the generated activate script and cleans it up on close', async () => {
+  it('spawns the platform shell with the generated activate script and cleans it up on close', async () => {
+    if (process.platform === 'win32') {
+      vi.useFakeTimers();
+    }
     mockSpawn.mockReturnValue(makeChild(0));
-    const result = await launchCLIinEnvironment('/envs/a');
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'bash',
-      ['--init-file', '/tmp/activate.sh'],
-      expect.objectContaining({ stdio: 'inherit' })
-    );
-    expect(mockFs.unlinkSync).toHaveBeenCalledWith('/tmp/activate.sh');
+    const resultPromise = launchCLIinEnvironment('/envs/a');
+    if (process.platform === 'win32') {
+      await vi.runAllTimersAsync();
+    }
+    const result = await resultPromise;
+    if (process.platform === 'win32') {
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'cmd',
+        ['/C', 'start cmd.exe /k /tmp/activate.sh'],
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+    } else {
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'bash',
+        ['--init-file', '/tmp/activate.sh'],
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+      expect(mockFs.unlinkSync).toHaveBeenCalledWith('/tmp/activate.sh');
+    }
     expect(result).toBe(true);
+    vi.useRealTimers();
   });
 });
 

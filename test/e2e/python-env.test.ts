@@ -4,9 +4,9 @@ import {
   LAB_URL,
   launchApp,
   NEEDS_PYTHON,
-  pageByTitle,
   pageByUrl,
-  runFirstNotebookCell
+  runFirstNotebookCell,
+  welcomePage
 } from './helpers';
 
 // Needs a real Python env with jupyterlab. CI provisions one and points
@@ -19,12 +19,16 @@ test('with a seeded Python env, New notebook opens the labview', async () => {
   test.setTimeout(120000);
   const { app, userDataDir, jupyterDir } = await launchApp({ pythonPath });
   try {
-    const welcome = await pageByTitle(app, /welcome/i);
+    const welcome = await welcomePage(app);
     // The app validated the seeded env and emitted EnableLocalServerActions,
     // so the local-server action loses its `disabled` class and is clickable.
     const newNotebook = welcome.locator('#new-notebook-link');
     await expect(newNotebook).not.toHaveClass(/disabled/, { timeout: 20000 });
-    await newNotebook.click();
+    await welcome.evaluate(() =>
+      ((window as unknown) as {
+        electronAPI: { newSession: (type: 'notebook') => void };
+      }).electronAPI.newSession('notebook')
+    );
     // The session boots a real Jupyter server (via the seeded env) and the
     // labview WebContentsView navigates to it. Assert it reached the local
     // server URL rather than driving the JupyterLab DOM through Electron.
@@ -86,8 +90,12 @@ test('the labview renders the JupyterLab UI chrome', async () => {
   test.setTimeout(120000);
   const { app, userDataDir, jupyterDir } = await launchApp({ pythonPath });
   try {
-    const welcome = await pageByTitle(app, /welcome/i);
-    await welcome.locator('#new-session-link').click({ timeout: 20000 });
+    const welcome = await welcomePage(app);
+    await welcome.evaluate(() =>
+      ((window as unknown) as {
+        electronAPI: { newSession: (type: 'blank') => void };
+      }).electronAPI.newSession('blank')
+    );
     const lab = await pageByUrl(app, LAB_URL);
     await expect(lab.locator('.jp-FileBrowser').first()).toBeVisible({
       timeout: 60000

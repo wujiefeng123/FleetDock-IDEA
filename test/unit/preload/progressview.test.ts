@@ -20,6 +20,7 @@ describe('progressview preload', () => {
         'getAppConfig',
         'isDarkTheme',
         'onShowProgress',
+        'notifyProgressViewPainted',
         'sendMessageToMain',
         'onInstallBundledPythonEnvStatus',
         'copyToClipboard'
@@ -48,6 +49,15 @@ describe('progressview preload', () => {
     );
   });
 
+  it('reports the painted progress request on its dedicated channel', async () => {
+    const api = await load();
+    api.notifyProgressViewPainted(9);
+    expect(ipcRenderer.send).toHaveBeenCalledWith(
+      EventTypeMain.ProgressViewPainted,
+      9
+    );
+  });
+
   it('sendMessageToMain relays an arbitrary channel and args verbatim', async () => {
     const api = await load();
     api.sendMessageToMain('custom-channel', 1, 'two');
@@ -62,9 +72,10 @@ describe('progressview preload', () => {
       {},
       'title',
       'detail',
-      true
+      true,
+      12
     );
-    expect(cb).toHaveBeenCalledWith('title', 'detail', true);
+    expect(cb).toHaveBeenCalledWith('title', 'detail', true, 12);
   });
 
   it('onInstallBundledPythonEnvStatus relays the InstallPythonEnvStatus message', async () => {

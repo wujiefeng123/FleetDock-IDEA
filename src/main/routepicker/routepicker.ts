@@ -14,7 +14,7 @@ const TIANDITU_JS_API_URL = `https://api.tianditu.gov.cn/api?v=4.0&tk=${TIANDITU
 const TIANDITU_SERVICE_JS_URL = 'https://api.tianditu.gov.cn/v4.0/service.js';
 const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-const DEFAULT_CENTER = { lat: 39.9042, lon: 116.4074, alt: 100 };
+const DEFAULT_CENTER = { lat: 39.9042, lon: 116.4074, alt: 20 };
 
 type RoutePointDraft = { lat: string; lon: string; alt: string };
 

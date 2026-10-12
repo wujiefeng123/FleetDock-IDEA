@@ -368,6 +368,9 @@ export class SessionWindow implements IDisposable {
       registry: this._registry,
       isDarkTheme: this._isDarkTheme
     });
+    // [UAV-IDE MODIFY] Keep the generic welcome view hidden until optional
+    // extensions finish first-paint decoration, avoiding an upstream-page flash.
+    welcomeView.view.setVisible(false);
     this._window.contentView.addChildView(welcomeView.view);
     const {
       width: contentWidth,
@@ -380,10 +383,35 @@ export class SessionWindow implements IDisposable {
       height: contentHeight - titleBarHeight
     });
 
+    this._welcomeView = welcomeView;
+    const welcomeReady = this._extensionHost.onWelcomeViewCreated(
+      welcomeView.view.webContents
+    );
     welcomeView.load();
 
-    this._welcomeView = welcomeView;
-    this._extensionHost.onWelcomeViewCreated(welcomeView.view.webContents);
+    this._showWelcomeViewWhenReady(welcomeView, welcomeReady);
+  }
+
+  private _showWelcomeViewWhenReady(
+    welcomeView: WelcomeView,
+    welcomeReady: Promise<boolean>
+  ): void {
+    void welcomeReady.then(ready => {
+      if (!ready) {
+        this._showProgressView(
+          '欢迎页加载失败',
+          '请重启应用；如果问题仍然存在，请检查应用日志。',
+          false
+        );
+        return;
+      }
+      if (
+        this._welcomeView === welcomeView &&
+        !welcomeView.view.webContents.isDestroyed()
+      ) {
+        welcomeView.view.setVisible(true);
+      }
+    });
   }
 
   private _createProgressView() {
@@ -397,20 +425,34 @@ export class SessionWindow implements IDisposable {
     title: string,
     detail?: string,
     showAnimation?: boolean
-  ) {
+  ): number {
     if (!this._progressViewVisible) {
       this._window.contentView.addChildView(this._progressView.view.view);
       this._progressViewVisible = true;
       this._titleBarView.showServerStatus(false);
     }
 
+    // [UAV-IDE MODIFY] Active transitions use the full window without the
+    // desktop title-bar panel; actionable error states restore window controls.
+    this._setProgressViewFullscreen(showAnimation !== false);
     this._resizeViews();
 
-    this._progressView.setProgress(title, detail, showAnimation !== false);
+    return this._progressView.setProgress(
+      title,
+      detail,
+      showAnimation !== false
+    );
   }
 
   private _setProgress(title: string, detail: string, showAnimation: boolean) {
+    this._setProgressViewFullscreen(showAnimation);
+    this._resizeViews();
     this._progressView.setProgress(title, detail, showAnimation);
+  }
+
+  private _setProgressViewFullscreen(fullscreen: boolean): void {
+    this._progressViewFullscreen = fullscreen;
+    this._titleBarView.view.setVisible(!fullscreen);
   }
 
   private _hideProgressView() {
@@ -420,6 +462,7 @@ export class SessionWindow implements IDisposable {
 
     this._window.contentView.removeChildView(this._progressView.view.view);
     this._progressViewVisible = false;
+    this._setProgressViewFullscreen(false);
     this._titleBarView.showServerStatus(
       this._contentViewType === ContentViewType.Lab
     );
@@ -605,7 +648,7 @@ export class SessionWindow implements IDisposable {
           return;
         }
 
-        this._showProgressView('Creating new session');
+        this._showProgressView('正在打开应用');
 
         const sessionConfig = SessionConfig.createLocal();
         this._sessionConfig = sessionConfig;
@@ -729,7 +772,7 @@ export class SessionWindow implements IDisposable {
           return;
         }
 
-        this._createSessionForRecent(sessionIndex);
+        this._queueRecentSessionOpen(sessionIndex);
       }
     );
 
@@ -765,7 +808,7 @@ export class SessionWindow implements IDisposable {
           return;
         }
 
-        this._createSessionForRecent(sessionIndex, true);
+        this._queueRecentSessionOpen(sessionIndex, true);
       }
     );
 
@@ -947,16 +990,17 @@ export class SessionWindow implements IDisposable {
         !this._progressViewVisible;
       const inLocalSession = inSession && !this._sessionConfig?.remoteURL;
 
+      // [UAV-IDE MODIFY] Keep the FleetDock desktop menu focused on product workflows.
       const uiModeSubmenu: MenuItemConstructorOptions[] = [
         {
-          label: 'UI Mode',
+          label: '界面模式',
           visible:
             this._contentViewType === ContentViewType.Lab &&
             !this._progressViewVisible,
           type: 'submenu',
           submenu: [
             {
-              label: 'Zen Mode',
+              label: '专注模式',
               click: () => {
                 this._setUIMode(UIMode.Zen);
               },
@@ -966,7 +1010,7 @@ export class SessionWindow implements IDisposable {
                 this._labView.uiMode === UIMode.Zen
             },
             {
-              label: 'Single document IDE',
+              label: '单文档 IDE',
               click: () => {
                 this._setUIMode(UIMode.SingleDocument);
               },
@@ -976,7 +1020,7 @@ export class SessionWindow implements IDisposable {
                 this._labView.uiMode === UIMode.SingleDocument
             },
             {
-              label: 'Multi document IDE',
+              label: '多文档 IDE',
               click: () => {
                 this._setUIMode(UIMode.MultiDocument);
               },
@@ -986,7 +1030,7 @@ export class SessionWindow implements IDisposable {
                 this._labView.uiMode === UIMode.MultiDocument
             },
             {
-              label: 'Managed by web app',
+              label: '由 Web 应用管理',
               click: () => {
                 this._setUIMode(UIMode.ManagedByWebApp);
               },
@@ -997,7 +1041,7 @@ export class SessionWindow implements IDisposable {
             },
             { type: 'separator' },
             {
-              label: 'Reset to session default',
+              label: '恢复会话默认设置',
               click: () => {
                 this._resetUIModeToSessionDefault();
               }
@@ -1008,7 +1052,7 @@ export class SessionWindow implements IDisposable {
 
       const closeSessionMenuItem: MenuItemConstructorOptions[] = [
         {
-          label: 'Close Session',
+          label: '关闭会话',
           click: () => {
             this._closeSession();
           }
@@ -1017,35 +1061,31 @@ export class SessionWindow implements IDisposable {
       ];
 
       const template: MenuItemConstructorOptions[] = [
-        {
-          label: 'New Window',
-          click: () => {
-            this._newWindow();
-          }
-        },
         ...(inLocalSession ? uiModeSubmenu : []),
-        { type: 'separator' },
+        ...(inLocalSession
+          ? [{ type: 'separator' } as MenuItemConstructorOptions]
+          : []),
         ...(inSession ? closeSessionMenuItem : []),
         {
-          label: 'Settings',
+          label: '设置',
           click: () => {
             this._app.showSettingsDialog();
           }
         },
         {
-          label: 'Manage Python environments',
+          label: '管理 Python 环境',
           click: () => {
             this._app.showManagePythonEnvsDialog();
           }
         },
         {
-          label: 'Check for updates…',
+          label: '检查更新…',
           click: () => {
             this._app.checkForUpdates('always');
           }
         },
         {
-          label: 'Open Developer Tools',
+          label: '打开开发者工具',
           visible:
             this._contentViewType === ContentViewType.Lab ||
             process.env.NODE_ENV === 'development',
@@ -1055,7 +1095,7 @@ export class SessionWindow implements IDisposable {
         },
         { type: 'separator' },
         {
-          label: 'About',
+          label: '关于 FleetDock IDEA',
           click: () => {
             this._app.showAboutDialog();
           }
@@ -1067,6 +1107,17 @@ export class SessionWindow implements IDisposable {
         window: BrowserWindow.fromWebContents(event.sender)
       });
     });
+
+    this._evm.registerEventHandler(
+      EventTypeMain.ProgressViewPainted,
+      (event, renderRequestId: number) => {
+        if (event.sender !== this._progressView?.view?.view?.webContents) {
+          return;
+        }
+
+        this._continueRecentSessionOpenAfterPaint(renderRequestId);
+      }
+    );
 
     this._evm.registerEventHandler(
       EventTypeMain.HideProgressView,
@@ -1345,7 +1396,11 @@ export class SessionWindow implements IDisposable {
     this.contentView?.setBounds(contentRect);
 
     if (this._progressViewVisible) {
-      this._progressView.view.view.setBounds(contentRect);
+      this._progressView.view.view.setBounds(
+        this._progressViewFullscreen
+          ? { x: 0, y: 0, width, height }
+          : contentRect
+      );
     }
 
     this._resizeEnvSelectPopup();
@@ -1592,7 +1647,7 @@ export class SessionWindow implements IDisposable {
       filesToOpen
     );
 
-    this._showProgressView('Creating new session');
+    this._showProgressView('正在打开应用');
 
     this._wsSettings = new WorkspaceSettings(sessionConfig.workingDirectory);
 
@@ -1773,6 +1828,37 @@ export class SessionWindow implements IDisposable {
     }
   }
 
+  private _queueRecentSessionOpen(
+    sessionIndex: number,
+    useDefaultPythonEnv?: boolean
+  ): void {
+    if (sessionIndex < 0 || sessionIndex >= appData.recentSessions.length) {
+      return;
+    }
+
+    // [UAV-IDE MODIFY] Present the transition view before synchronous FleetDock
+    // environment preparation can occupy the Electron main thread.
+    const renderRequestId = this._showProgressView('正在打开应用');
+    this._pendingRecentSessionOpen = {
+      renderRequestId,
+      sessionIndex,
+      useDefaultPythonEnv
+    };
+  }
+
+  private _continueRecentSessionOpenAfterPaint(renderRequestId: number): void {
+    const pending = this._pendingRecentSessionOpen;
+    if (!pending || pending.renderRequestId !== renderRequestId) {
+      return;
+    }
+
+    this._pendingRecentSessionOpen = undefined;
+    this._createSessionForRecent(
+      pending.sessionIndex,
+      pending.useDefaultPythonEnv
+    );
+  }
+
   private _showWelcomeView() {
     this._hideProgressView();
 
@@ -1801,15 +1887,6 @@ export class SessionWindow implements IDisposable {
       this._wsSettings.save();
     }
     this._labView.setUIMode(uiMode);
-  }
-
-  private _newWindow() {
-    this._app.createNewEmptySession();
-    // keep a free server up
-    // launch server after a wait to prevent blocking UI
-    setTimeout(() => {
-      this._app.createFreeServersIfNeeded();
-    }, 500);
   }
 
   private _closeSession() {
@@ -1862,6 +1939,12 @@ export class SessionWindow implements IDisposable {
   private _welcomeView: WelcomeView;
   private _progressView: ProgressView;
   private _progressViewVisible: boolean = false;
+  private _progressViewFullscreen = false;
+  private _pendingRecentSessionOpen?: {
+    renderRequestId: number;
+    sessionIndex: number;
+    useDefaultPythonEnv?: boolean;
+  };
   private _restartingServer = false;
   // bumped on every accepted restart so a deferred "hide once the lab view
   // paints" continuation can tell whether a later restart has superseded it.

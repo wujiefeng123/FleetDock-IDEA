@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="722" viewBox="0 0 1200 722">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#eef5ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="722" rx="32" fill="url(#bg)"/>
+  <rect x="48" y="38" width="10" height="92" rx="5" fill="#2563eb"/>
+  <text x="82" y="78" fill="#0f172a" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="34" font-weight="800">FleetDock SDK 学习路径</text>
+  <text x="82" y="116" fill="#64748b" font-family="Microsoft YaHei, Segoe UI, sans-serif"
+        font-size="18">先学统一对象，再把飞行、协同和感知交给 SDK</text>
+  <g filter="url(#shadow)" font-family="Microsoft YaHei, Segoe UI, sans-serif">
+
+      <g>
+        <rect x="59" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="208" r="20" fill="#2563eb"/>
+        <text x="97" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">1</text>
+        <text x="131" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">运行时</text>
+        <text x="87" y="257" fill="#475569"
+              font-size="16">初始化并取得已绑定设备</text>
+      </g>
+
+      <g>
+        <rect x="435" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="208" r="20" fill="#2563eb"/>
+        <text x="473" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">2</text>
+        <text x="507" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">标准命令</text>
+        <text x="463" y="257" fill="#475569"
+              font-size="16">统一控制无人机与机器狗</text>
+      </g>
+
+      <g>
+        <rect x="811" y="170" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="208" r="20" fill="#2563eb"/>
+        <text x="849" y="214" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">3</text>
+        <text x="883" y="213" fill="#0f172a"
+              font-size="22" font-weight="700">Plan</text>
+        <text x="839" y="257" fill="#475569"
+              font-size="16">链式声明完整任务</text>
+      </g>
+
+      <g>
+        <rect x="59" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="376" r="20" fill="#2563eb"/>
+        <text x="97" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">4</text>
+        <text x="131" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Route</text>
+        <text x="87" y="425" fill="#475569"
+              font-size="16">生成与执行标准航线</text>
+      </g>
+
+      <g>
+        <rect x="435" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="376" r="20" fill="#2563eb"/>
+        <text x="473" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">5</text>
+        <text x="507" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">Fleet</text>
+        <text x="463" y="425" fill="#475569"
+              font-size="16">批量控制多台设备</text>
+      </g>
+
+      <g>
+        <rect x="811" y="338" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="376" r="20" fill="#2563eb"/>
+        <text x="849" y="382" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">6</text>
+        <text x="883" y="381" fill="#0f172a"
+              font-size="22" font-weight="700">事件与传感器</text>
+        <text x="839" y="425" fill="#475569"
+              font-size="16">订阅标准数据模型</text>
+      </g>
+
+      <g>
+        <rect x="59" y="506" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="97" cy="544" r="20" fill="#2563eb"/>
+        <text x="97" y="550" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">7</text>
+        <text x="131" y="549" fill="#0f172a"
+              font-size="22" font-weight="700">协同控制</text>
+        <text x="87" y="593" fill="#475569"
+              font-size="16">编队、跟随与手动控制</text>
+      </g>
+
+      <g>
+        <rect x="435" y="506" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="473" cy="544" r="20" fill="#2563eb"/>
+        <text x="473" y="550" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">8</text>
+        <text x="507" y="549" fill="#0f172a"
+              font-size="22" font-weight="700">避障</text>
+        <text x="463" y="593" fill="#475569"
+              font-size="16">感知、判断与自动绕行</text>
+      </g>
+
+      <g>
+        <rect x="811" y="506" width="330" height="126" rx="22"
+              fill="#ffffff" stroke="#dbe5f2" stroke-width="2"/>
+        <circle cx="849" cy="544" r="20" fill="#2563eb"/>
+        <text x="849" y="550" text-anchor="middle"
+              fill="#ffffff" font-size="17" font-weight="700">9</text>
+        <text x="883" y="549" fill="#0f172a"
+              font-size="22" font-weight="700">扩展</text>
+        <text x="839" y="593" fill="#475569"
+              font-size="16">设备工厂与自定义传感器</text>
+      </g>
+  </g>
+</svg>

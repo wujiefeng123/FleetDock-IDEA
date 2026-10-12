@@ -3,6 +3,8 @@
 
 // [UAV-IDE MODIFY] Generate workspace-local FleetDock runtime bootstrap files without coupling Python SDK objects to Electron.
 
+/* eslint-disable camelcase -- [UAV-IDE MODIFY] Generate the FleetDock Python runtime with its published snake_case API. */
+
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as path from 'path';
@@ -12,11 +14,6 @@ import {
   normalizeApplicationEnvType,
   toEnvironmentMap
 } from '../config/application';
-import {
-  mavsdkServerPortForSimulationMavlinkPort,
-  SIMULATION_MAVLINK_PORT_MAX,
-  SIMULATION_MAVLINK_PORT_MIN
-} from '../devices/port-allocator';
 import { DroneDevice, FleetDockDeviceConfig } from '../devices/types';
 import {
   buildPhysicalConnectionURI,
@@ -255,8 +252,15 @@ function normalizeRuntimeParams(
   fleetdock: FleetDockDeviceConfig,
   params: FleetDockDeviceConfig['params']
 ): FleetDockDeviceConfig['params'] {
-  if (fleetdock.builder !== 'px4_generic' || device.source !== 'simulation') {
+  if (fleetdock.builder !== 'px4_generic') {
     return params;
+  }
+
+  const dynamicPortParams: FleetDockDeviceConfig['params'] = { ...params };
+  // [UAV-IDE MODIFY] Generated runtimes must not retain host-specific fixed gRPC ports.
+  delete dynamicPortParams.mavsdk_server_port;
+  if (device.source !== 'simulation') {
+    return dynamicPortParams;
   }
 
   // [UAV-IDE MODIFY] Route the SDK-owned Project AirSim RGB bridge through the standard PX4 media boundary.
@@ -264,33 +268,17 @@ function normalizeRuntimeParams(
     device.simulation?.airsimVehicleName || device.airsimVehicleName || ''
   ).trim();
   const normalized: FleetDockDeviceConfig['params'] = {
-    ...params,
+    ...dynamicPortParams,
     ...(vehicleName &&
     hasSimulationRgbCamera(device) &&
-    !params.camera_stream_uri
+    !dynamicPortParams.camera_stream_uri
       ? {
           camera_stream_uri: `rtsp://127.0.0.1:8554/${vehicleName}_camera_front`,
           camera_stream_source: 'simulated'
         }
       : {})
   };
-  if (normalized.mavsdk_server_port !== undefined) {
-    return normalized;
-  }
-
-  const endpointPort = parseEndpointPort(normalized.endpoint);
-  if (
-    endpointPort === null ||
-    endpointPort < SIMULATION_MAVLINK_PORT_MIN ||
-    endpointPort > SIMULATION_MAVLINK_PORT_MAX
-  ) {
-    return normalized;
-  }
-
-  return {
-    ...normalized,
-    mavsdk_server_port: mavsdkServerPortForSimulationMavlinkPort(endpointPort)
-  };
+  return normalized;
 }
 
 function hasSimulationRgbCamera(device: DroneDevice): boolean {
@@ -300,15 +288,6 @@ function hasSimulationRgbCamera(device: DroneDevice): boolean {
   return device.sensors.some(
     sensor => sensor.enabled !== false && sensor.type === 'camera'
   );
-}
-
-function parseEndpointPort(value: unknown): number | null {
-  const match = String(value || '').match(/:(\d+)\s*$/);
-  if (!match) {
-    return null;
-  }
-  const port = Number(match[1]);
-  return Number.isInteger(port) ? port : null;
 }
 
 function getMavsdkEndpoints(devices: RuntimeDeviceConfig[]): string[] {
@@ -430,7 +409,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from fleetdock import BaseDevice, CapabilityName, DeviceFactory, DeviceMetadata, Drone, Fleet, Plan, ReadinessRequirement, RobotDog, Route, SensorSourceKind, SensorStreamOptions, Waypoint
+from fleetdock import BaseDevice, CapabilityName, DeviceFactory, DeviceMetadata, Drone, Fleet, Plan, ReadinessRequirement, RobotDog, SensorSourceKind, SensorStreamOptions
 from fleetdock_ide_runtime import IdeSimulationSensorProxy
 
 
@@ -452,191 +431,10 @@ class _FleetDockEnvs:
         return dict(os.environ)
 
 
-# [UAV-IDE MODIFY] Convert map-authored DroneRoute environment values into SDK routes.
-class _FleetDockRoutes:
-    _EARTH_RADIUS_M = 6378137.0
-
-    def from_env(
-        self,
-        name: str,
-        *,
-        mode: str = "simulation-local",
-        altitude_m: float | None = None,
-        origin: str = "first-waypoint",
-        max_distance_m: float = 5000.0,
-    ) -> Route:
-        """Build an SDK Route from a map-authored DroneRoute environment value.
-
-        "simulation-local" anchors the first GPS point at local (0, 0);
-        "gps" preserves global coordinates and treats waypoint altitudes as AMSL.
-        "altitude_m" overrides every waypoint altitude when provided.
-        """
-        env_name = str(name or "").strip()
-        if not env_name:
-            raise ValueError("FleetDock route environment variable name is required.")
-
-        normalized_mode = str(mode or "").strip().lower()
-        if normalized_mode == "local":
-            normalized_mode = "simulation-local"
-        if normalized_mode not in ("simulation-local", "gps"):
-            raise ValueError(
-                "FleetDock route mode must be 'simulation-local' or 'gps'."
-            )
-        if origin != "first-waypoint":
-            raise ValueError(
-                "FleetDock route origin currently supports only 'first-waypoint'."
-            )
-
-        distance_limit_m = self._finite_number(
-            max_distance_m, "max_distance_m"
-        )
-        if distance_limit_m <= 0:
-            raise ValueError("FleetDock route max_distance_m must be greater than 0.")
-        altitude_override_m = (
-            None
-            if altitude_m is None
-            else self._finite_number(altitude_m, "altitude_m")
-        )
-
-        raw_value = os.getenv(env_name)
-        if raw_value is None:
-            raise KeyError(
-                f"Missing required route environment variable: {env_name}"
-            )
-        try:
-            raw_points = json.loads(raw_value)
-        except json.JSONDecodeError as error:
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' contains invalid JSON: {error.msg}."
-            ) from error
-        if not isinstance(raw_points, list):
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' must contain a JSON array."
-            )
-        if len(raw_points) < 2:
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' requires at least two waypoints."
-            )
-
-        points = [
-            self._normalize_point(env_name, index, value)
-            for index, value in enumerate(raw_points)
-        ]
-        first_latitude_deg = points[0]["latitude_deg"]
-        first_longitude_deg = points[0]["longitude_deg"]
-        waypoints: list[Waypoint] = []
-        for index, point in enumerate(points):
-            north_m, east_m = self._local_offset_m(
-                first_latitude_deg,
-                first_longitude_deg,
-                point["latitude_deg"],
-                point["longitude_deg"],
-            )
-            distance_m = math.hypot(north_m, east_m)
-            if distance_m > distance_limit_m:
-                raise ValueError(
-                    f"FleetDock route environment variable '{env_name}' waypoint {index + 1} "
-                    f"is {distance_m:.1f} m from the first waypoint, exceeding "
-                    f"max_distance_m={distance_limit_m:.1f}."
-                )
-
-            if normalized_mode == "simulation-local":
-                waypoints.append(
-                    Waypoint(
-                        x_m=north_m,
-                        y_m=east_m,
-                        z_m=altitude_override_m,
-                    )
-                )
-                continue
-
-            waypoint_altitude_m = (
-                altitude_override_m
-                if altitude_override_m is not None
-                else point["altitude_m"]
-            )
-            if waypoint_altitude_m is None:
-                raise ValueError(
-                    f"FleetDock GPS route environment variable '{env_name}' waypoint "
-                    f"{index + 1} requires an 'alt' value or altitude_m override."
-                )
-            waypoints.append(
-                Waypoint(
-                    latitude_deg=point["latitude_deg"],
-                    longitude_deg=point["longitude_deg"],
-                    altitude_m=waypoint_altitude_m,
-                )
-            )
-
-        return Route.polyline(waypoints, name=env_name)
-
-    def _normalize_point(
-        self, env_name: str, index: int, value: Any
-    ) -> dict[str, float | None]:
-        if not isinstance(value, Mapping):
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' waypoint "
-                f"{index + 1} must be a JSON object."
-            )
-        latitude = value.get("lat", value.get("latitude_deg"))
-        longitude = value.get("lon", value.get("longitude_deg"))
-        altitude = value.get("alt", value.get("altitude_m"))
-        latitude_deg = self._finite_number(
-            latitude, f"{env_name} waypoint {index + 1} latitude"
-        )
-        longitude_deg = self._finite_number(
-            longitude, f"{env_name} waypoint {index + 1} longitude"
-        )
-        if not -90.0 <= latitude_deg <= 90.0:
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' waypoint "
-                f"{index + 1} latitude must be between -90 and 90."
-            )
-        if not -180.0 <= longitude_deg <= 180.0:
-            raise ValueError(
-                f"FleetDock route environment variable '{env_name}' waypoint "
-                f"{index + 1} longitude must be between -180 and 180."
-            )
-        altitude_value_m = (
-            None
-            if altitude is None or altitude == ""
-            else self._finite_number(
-                altitude, f"{env_name} waypoint {index + 1} altitude"
-            )
-        )
-        return {
-            "latitude_deg": latitude_deg,
-            "longitude_deg": longitude_deg,
-            "altitude_m": altitude_value_m,
-        }
-
-    def _local_offset_m(
-        self,
-        origin_latitude_deg: float,
-        origin_longitude_deg: float,
-        latitude_deg: float,
-        longitude_deg: float,
-    ) -> tuple[float, float]:
-        north_m = math.radians(latitude_deg - origin_latitude_deg) * self._EARTH_RADIUS_M
-        east_m = (
-            math.radians(longitude_deg - origin_longitude_deg)
-            * self._EARTH_RADIUS_M
-            * math.cos(math.radians(origin_latitude_deg))
-        )
-        return north_m, east_m
-
-    @staticmethod
-    def _finite_number(value: Any, label: str) -> float:
-        try:
-            number = float(value)
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"FleetDock route {label} must be a finite number.") from error
-        if not math.isfinite(number):
-            raise ValueError(f"FleetDock route {label} must be a finite number.")
-        return number
-
-
 class _FleetDockHudBridge:
+    _OBSERVATION_TIMEOUT_S = 2.0
+    _NAVIGATION_STALE_AFTER_MS = 2000
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._server: ThreadingHTTPServer | None = None
@@ -651,6 +449,9 @@ class _FleetDockHudBridge:
         self._sensor_received_times: dict[str, deque[float]] = {}
         self._last_events: dict[str, dict[str, Any]] = {}
         self._event_received_times: dict[str, deque[float]] = {}
+        self._event_updated_at_s: dict[str, dict[str, float]] = {}
+        self._telemetry_releases: dict[str, Any] = {}
+        self._last_snapshot_requested_at_s: float | None = None
         self._command_history: deque[dict[str, Any]] = deque(maxlen=100)
         self._command_started: dict[str, dict[str, Any]] = {}
         self._timeline: deque[dict[str, Any]] = deque(maxlen=240)
@@ -746,6 +547,11 @@ class _FleetDockHudBridge:
             self._start_sensor_monitor(runtime)
 
     def snapshot(self, runtime: type["_FleetDockRuntime"]) -> dict[str, Any]:
+        # [UAV-IDE MODIFY] Treat visible HUD polling as a short-lived observation lease.
+        # This keeps navigation telemetry live without opening another device connection.
+        with self._lock:
+            self._last_snapshot_requested_at_s = time.monotonic()
+        self._reconcile_hud_telemetry(runtime)
         with self._lock:
             devices = []
             for config in _DEVICE_CONFIGS:
@@ -765,15 +571,22 @@ class _FleetDockHudBridge:
         self._sensor_stop.set()
         with self._lock:
             self._generation += 1
-            unsubscribers = list(self._event_unsubscribers) + list(self._sensor_unsubscribers.values())
+            unsubscribers = (
+                list(self._event_unsubscribers)
+                + list(self._sensor_unsubscribers.values())
+                + list(self._telemetry_releases.values())
+            )
             self._event_unsubscribers = []
             self._sensor_unsubscribers = {}
+            self._telemetry_releases = {}
+            self._last_snapshot_requested_at_s = None
             sensor_thread = self._sensor_thread
             self._sensor_thread = None
             self._sensor_samples = {}
             self._sensor_errors = {}
             self._last_events = {}
             self._event_received_times = {}
+            self._event_updated_at_s = {}
             self._command_history.clear()
             self._command_started = {}
             self._timeline.clear()
@@ -800,11 +613,13 @@ class _FleetDockHudBridge:
         if self._event_unsubscribers:
             return
         for config in _DEVICE_CONFIGS:
+            # [UAV-IDE MODIFY] A physical link is reserved for the user's control task.
+            # HUD event observation must not add callback pressure to its MAVSDK connection.
             alias = config["alias"]
             device = getattr(runtime.devices, alias, None)
             events = getattr(device, "events", None)
             subscribe = getattr(events, "subscribe", None)
-            if callable(subscribe):
+            if self._automatic_subscriptions_enabled(config) and callable(subscribe):
                 generation = self._generation
 
                 def on_event(
@@ -825,6 +640,9 @@ class _FleetDockHudBridge:
                         self._event_received_times.setdefault(
                             device_alias, deque(maxlen=128)
                         ).append(received_monotonic)
+                        self._event_updated_at_s.setdefault(device_alias, {})[
+                            event_type
+                        ] = received_monotonic
                         # [UAV-IDE MODIFY] Keep the fault timeline diagnostic:
                         # record state changes and alerts, not high-rate attitude/position samples.
                         lowered_type = event_type.lower()
@@ -1166,9 +984,14 @@ class _FleetDockHudBridge:
         generation: int,
     ) -> None:
         while not self._sensor_stop.is_set() and generation == self._generation:
+            self._reconcile_hud_telemetry(runtime)
             for config in _DEVICE_CONFIGS:
                 if self._sensor_stop.is_set() or generation != self._generation:
                     break
+                # [UAV-IDE MODIFY] Do not open HUD sensor streams on a real aircraft.
+                # Command-scoped SDK telemetry remains the sole owner of the physical link.
+                if not self._automatic_subscriptions_enabled(config):
+                    continue
                 alias = config["alias"]
                 device = getattr(runtime.devices, alias, None)
                 try:
@@ -1182,6 +1005,56 @@ class _FleetDockHudBridge:
                         if generation == self._generation:
                             self._sensor_errors[alias + ":*"] = str(error)
             self._sensor_stop.wait(1.0)
+
+    def _reconcile_hud_telemetry(self, runtime: type["_FleetDockRuntime"]) -> None:
+        now = time.monotonic()
+        with self._lock:
+            requested_at_s = self._last_snapshot_requested_at_s
+            observation_active = (
+                requested_at_s is not None
+                and now - requested_at_s <= self._OBSERVATION_TIMEOUT_S
+            )
+
+        desired_aliases: set[str] = set()
+        for config in _DEVICE_CONFIGS:
+            if not observation_active or not self._automatic_subscriptions_enabled(config):
+                continue
+            alias = config["alias"]
+            device = getattr(runtime.devices, alias, None)
+            if not self._device_connected(device):
+                continue
+            acquire = getattr(device, "_acquire_capability_telemetry", None)
+            if not callable(acquire):
+                continue
+            desired_aliases.add(alias)
+            with self._lock:
+                if alias in self._telemetry_releases:
+                    continue
+                try:
+                    self._telemetry_releases[alias] = acquire(CapabilityName.STATUS)
+                except Exception as error:
+                    self._sensor_errors[alias + ":hud-telemetry"] = str(error)
+
+        releases: list[Any] = []
+        with self._lock:
+            for alias in tuple(self._telemetry_releases):
+                if alias not in desired_aliases:
+                    releases.append(self._telemetry_releases.pop(alias))
+            if not observation_active:
+                self._last_snapshot_requested_at_s = None
+        for release in releases:
+            try:
+                release()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _automatic_subscriptions_enabled(config: Mapping[str, Any]) -> bool:
+        metadata = config.get("metadata") or {}
+        return not (
+            metadata.get("source") == "real"
+            or metadata.get("runtimeKind") == "physical"
+        )
 
     def _subscribe_sensors(self, alias: str, device: Any) -> None:
         # [UAV-IDE MODIFY] Retain this focused entry for diagnostics while production uses the reconnecting monitor.
@@ -1389,6 +1262,30 @@ class _FleetDockHudBridge:
     def _hud_first(primary: Any, fallback: Any) -> Any:
         return fallback if primary is None else primary
 
+    @classmethod
+    def _fresh_hud_group(
+        cls,
+        primary: Mapping[str, Any],
+        primary_age_ms: Any,
+        fallback: Mapping[str, Any],
+        fallback_age_ms: Any,
+    ) -> tuple[dict[str, Any], int | None]:
+        keys = tuple(dict.fromkeys((*primary.keys(), *fallback.keys())))
+        for values, age_ms in (
+            (primary, primary_age_ms),
+            (fallback, fallback_age_ms),
+        ):
+            if not isinstance(age_ms, (int, float)) or age_ms > cls._NAVIGATION_STALE_AFTER_MS:
+                continue
+            if any(values.get(key) is not None for key in keys):
+                return ({key: values.get(key) for key in keys}, int(age_ms))
+        return ({key: None for key in keys}, None)
+
+    def _event_age_ms(self, alias: str, event_type: str) -> int | None:
+        with self._lock:
+            updated_at_s = (self._event_updated_at_s.get(alias) or {}).get(event_type)
+        return self._age_ms(updated_at_s)
+
     @staticmethod
     def _device_connected(device: Any) -> bool:
         # [UAV-IDE MODIFY] The connection event is delivered asynchronously. Immediately
@@ -1433,10 +1330,14 @@ class _FleetDockHudBridge:
                 latest_received_at = received_at
 
         gnss = dict((by_type.get("gnss") or {}).get("sample") or {})
+        gnss_age_ms = (by_type.get("gnss") or {}).get("sampleAgeMs")
         pose = dict(
             (by_type.get("vendor.projectairsim.actual_pose") or {}).get("sample")
             or {}
         )
+        pose_age_ms = (
+            by_type.get("vendor.projectairsim.actual_pose") or {}
+        ).get("sampleAgeMs")
 
         latitude = self._hud_number(gnss.get("latitude_deg"))
         longitude = self._hud_number(gnss.get("longitude_deg"))
@@ -1477,6 +1378,12 @@ class _FleetDockHudBridge:
         return {
             "telemetryAgeMs": latest_age_ms,
             "updatedAt": latest_received_at,
+            "ages": {
+                "global": gnss_age_ms,
+                "local": pose_age_ms,
+                "velocity": None,
+                "attitude": pose_age_ms,
+            },
             "global": {
                 "lat": latitude,
                 "lon": longitude,
@@ -1507,18 +1414,83 @@ class _FleetDockHudBridge:
         last_event = self._last_events.get(alias, {})
         sensor_snapshot = self._sensor_snapshot(alias, device)
         sensor_fallback = self._sensor_hud_fallback(sensor_snapshot)
-        telemetry_age_ms = self._age_ms(self._value(state, "last_event_updated_at_s"))
-        sensor_age_ms = sensor_fallback.get("telemetryAgeMs")
-        if telemetry_age_ms is None:
-            telemetry_age_ms = sensor_age_ms
-        elif sensor_age_ms is not None:
-            telemetry_age_ms = min(telemetry_age_ms, sensor_age_ms)
         global_fallback = sensor_fallback["global"]
         home_fallback = sensor_fallback["home"]
         local_fallback = sensor_fallback["local"]
         velocity_fallback = sensor_fallback["velocity"]
         attitude_fallback = sensor_fallback["attitude"]
         health_fallback = sensor_fallback["health"]
+        fallback_ages = sensor_fallback["ages"]
+        global_values, global_age_ms = self._fresh_hud_group(
+            {
+                "lat": self._value(state, "latitude_deg"),
+                "lon": self._value(state, "longitude_deg"),
+                "absoluteAltitudeM": self._value(state, "absolute_altitude_m"),
+                "relativeAltitudeM": self._value(state, "relative_altitude_m"),
+            },
+            self._age_ms(self._value(state, "global_position_updated_at_s")),
+            global_fallback,
+            fallback_ages["global"],
+        )
+        local_values, local_age_ms = self._fresh_hud_group(
+            {
+                "x": self._value(state, "local_x_m"),
+                "y": self._value(state, "local_y_m"),
+                "z": self._value(state, "local_z_m"),
+            },
+            self._age_ms(self._value(state, "local_position_updated_at_s")),
+            local_fallback,
+            fallback_ages["local"],
+        )
+        velocity_values, velocity_age_ms = self._fresh_hud_group(
+            {
+                "x": self._value(state, "velocity_x_m_s"),
+                "y": self._value(state, "velocity_y_m_s"),
+                "z": self._value(state, "velocity_z_m_s"),
+            },
+            self._event_age_ms(alias, "motion.velocity.updated"),
+            velocity_fallback,
+            fallback_ages["velocity"],
+        )
+        attitude_values, attitude_age_ms = self._fresh_hud_group(
+            {
+                "roll": self._value(state, "roll_deg"),
+                "pitch": self._value(state, "pitch_deg"),
+                "yaw": self._value(state, "yaw_deg"),
+            },
+            self._event_age_ms(alias, "motion.attitude.updated"),
+            attitude_fallback,
+            fallback_ages["attitude"],
+        )
+        home_values = {
+            "lat": self._hud_first(self._value(state, "home_latitude_deg"), home_fallback["lat"]),
+            "lon": self._hud_first(self._value(state, "home_longitude_deg"), home_fallback["lon"]),
+            "absoluteAltitudeM": self._hud_first(
+                self._value(state, "home_absolute_altitude_m"),
+                home_fallback["absoluteAltitudeM"],
+            ),
+        }
+        if (
+            global_values["relativeAltitudeM"] is None
+            and global_values["absoluteAltitudeM"] is not None
+            and home_values["absoluteAltitudeM"] is not None
+        ):
+            global_values["relativeAltitudeM"] = (
+                global_values["absoluteAltitudeM"] - home_values["absoluteAltitudeM"]
+            )
+        navigation_ages = [
+            age_ms
+            for age_ms in (
+                global_age_ms,
+                local_age_ms,
+                velocity_age_ms,
+                attitude_age_ms,
+            )
+            if age_ms is not None
+        ]
+        # [UAV-IDE MODIFY] AGE represents the oldest navigation group displayed,
+        # rather than an unrelated fresh battery or state event.
+        telemetry_age_ms = max(navigation_ages) if navigation_ages else None
         if not connected:
             # [UAV-IDE MODIFY] Sensor discovery may survive a disconnect, but
             # cached samples and state defaults are not live vehicle telemetry.
@@ -1576,41 +1548,11 @@ class _FleetDockHudBridge:
                 self._value(state, "battery_remaining_fraction")
                 if connected else None
             ),
-            "global": {
-                "lat": self._hud_first(self._value(state, "latitude_deg"), global_fallback["lat"]) if connected else None,
-                "lon": self._hud_first(self._value(state, "longitude_deg"), global_fallback["lon"]) if connected else None,
-                "absoluteAltitudeM": self._hud_first(
-                    self._value(state, "absolute_altitude_m"),
-                    global_fallback["absoluteAltitudeM"],
-                ) if connected else None,
-                "relativeAltitudeM": self._hud_first(
-                    self._value(state, "relative_altitude_m"),
-                    global_fallback["relativeAltitudeM"],
-                ) if connected else None,
-            },
-            "home": {
-                "lat": self._hud_first(self._value(state, "home_latitude_deg"), home_fallback["lat"]) if connected else None,
-                "lon": self._hud_first(self._value(state, "home_longitude_deg"), home_fallback["lon"]) if connected else None,
-                "absoluteAltitudeM": self._hud_first(
-                    self._value(state, "home_absolute_altitude_m"),
-                    home_fallback["absoluteAltitudeM"],
-                ) if connected else None,
-            },
-            "local": {
-                "x": self._hud_first(self._value(state, "local_x_m"), local_fallback["x"]) if connected else None,
-                "y": self._hud_first(self._value(state, "local_y_m"), local_fallback["y"]) if connected else None,
-                "z": self._hud_first(self._value(state, "local_z_m"), local_fallback["z"]) if connected else None,
-            },
-            "velocity": {
-                "x": self._hud_first(self._value(state, "velocity_x_m_s"), velocity_fallback["x"]) if connected else None,
-                "y": self._hud_first(self._value(state, "velocity_y_m_s"), velocity_fallback["y"]) if connected else None,
-                "z": self._hud_first(self._value(state, "velocity_z_m_s"), velocity_fallback["z"]) if connected else None,
-            },
-            "attitude": {
-                "roll": self._hud_first(self._value(state, "roll_deg"), attitude_fallback["roll"]) if connected else None,
-                "pitch": self._hud_first(self._value(state, "pitch_deg"), attitude_fallback["pitch"]) if connected else None,
-                "yaw": self._hud_first(self._value(state, "yaw_deg"), attitude_fallback["yaw"]) if connected else None,
-            },
+            "global": global_values if connected else {key: None for key in global_values},
+            "home": home_values if connected else {key: None for key in home_values},
+            "local": local_values if connected else {key: None for key in local_values},
+            "velocity": velocity_values if connected else {key: None for key in velocity_values},
+            "attitude": attitude_values if connected else {key: None for key in attitude_values},
             "health": {
                 "localPositionOk": self._hud_first(
                     self._value(state, "health_local_position_ok"),
@@ -1776,7 +1718,6 @@ class _FleetDockCore:
 class _FleetDockRuntime:
     devices = _FleetDockDevices()
     envs = _FleetDockEnvs()
-    routes = _FleetDockRoutes()
     core = _FleetDockCore()
     hud = _FleetDockHudBridge()
     _initialized = False
@@ -1866,25 +1807,13 @@ from __future__ import annotations
 
 from typing import Any, overload
 
-from fleetdock import BaseDevice, DevicePlan, Drone, DronePlan, Fleet, FleetPlan, RobotDog, RobotDogPlan, Route
+from fleetdock import BaseDevice, DevicePlan, Drone, DronePlan, Fleet, FleetPlan, RobotDog, RobotDogPlan
 
 
 class _FleetDockEnvs:
     def get(self, name: str, default: Any = None) -> Any: ...
     def require(self, name: str) -> str: ...
     def all(self) -> dict[str, str]: ...
-
-
-class _FleetDockRoutes:
-    def from_env(
-        self,
-        name: str,
-        *,
-        mode: str = "simulation-local",
-        altitude_m: float | None = None,
-        origin: str = "first-waypoint",
-        max_distance_m: float = 5000.0,
-    ) -> Route: ...
 
 
 class _FleetDockDevices:
@@ -1906,7 +1835,6 @@ class _FleetDockCore:
 class _FleetDockRuntime:
     devices: _FleetDockDevices
     envs: _FleetDockEnvs
-    routes: _FleetDockRoutes
     core: _FleetDockCore
 
     @classmethod

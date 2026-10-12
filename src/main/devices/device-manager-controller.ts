@@ -35,14 +35,19 @@ export class DeviceManagerController {
   register() {
     const evm = this._options.eventManager;
 
-    evm.registerEventHandler(EventTypeMain.OpenDeviceManager, event => {
-      if (event.sender !== this._options.getLabWebContents()) {
-        return;
-      }
+    evm.registerEventHandler(
+      EventTypeMain.OpenDeviceManager,
+      (event, deviceId?: string) => {
+        if (event.sender !== this._options.getLabWebContents()) {
+          return;
+        }
 
-      // [UAV-IDE MODIFY] Open device management from the top menu as a standalone global UAV dialog.
-      this._showDeviceManagerDialog();
-    });
+        // [UAV-IDE MODIFY] Open device management from the top menu as a standalone global UAV dialog.
+        this._showDeviceManagerDialog(
+          typeof deviceId === 'string' ? deviceId.trim() : ''
+        );
+      }
+    );
 
     evm.registerSyncEventHandler(
       EventTypeMain.DeviceManagerLoad,
@@ -219,8 +224,11 @@ export class DeviceManagerController {
     );
   }
 
-  private _showDeviceManagerDialog() {
+  private _showDeviceManagerDialog(initialDeviceId = '') {
     if (this._deviceManagerDialog) {
+      if (initialDeviceId) {
+        this._deviceManagerDialog.selectDevice(initialDeviceId);
+      }
       this._deviceManagerDialog.window.window.focus();
       return;
     }
@@ -229,7 +237,8 @@ export class DeviceManagerController {
     const dialog = new DeviceManagerDialog({
       isDarkTheme: this._options.isDarkTheme,
       parent: this._options.parent,
-      workingDirectory: this._options.getWorkingDirectory()
+      workingDirectory: this._options.getWorkingDirectory(),
+      initialDeviceId
     });
 
     this._deviceManagerDialog = dialog;

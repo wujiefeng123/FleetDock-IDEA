@@ -4,9 +4,8 @@ import {
   Locator,
   Page
 } from '@playwright/test';
-import { stubAllDialogs } from 'electron-playwright-helpers';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 
 // A booted JupyterLab server URL: the labview navigates here once a session is
@@ -53,13 +52,30 @@ export async function launchApp(opts?: {
   const userDataDir = mkdtempSync(join(tmpdir(), 'jlab-e2e-'));
   const jupyterDir = mkdtempSync(join(tmpdir(), 'jlab-e2e-jupyter-'));
   if (opts?.pythonPath) {
+    const environmentRoot =
+      process.platform === 'win32'
+        ? dirname(opts.pythonPath)
+        : dirname(dirname(opts.pythonPath));
+    const bundledEnvironmentRoot = join(userDataDir, 'jlab_server');
+    // FleetDock intentionally forces local sessions onto the bundled runtime.
+    // Link the isolated test user's bundled path to the CI-provided environment
+    // so E2E follows the production path contract without copying the env.
+    symlinkSync(
+      environmentRoot,
+      bundledEnvironmentRoot,
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+    const pythonPath =
+      process.platform === 'win32'
+        ? join(bundledEnvironmentRoot, 'python.exe')
+        : join(bundledEnvironmentRoot, 'bin', 'python');
     writeFileSync(
       join(userDataDir, 'app-data.json'),
       JSON.stringify({
-        pythonPath: opts.pythonPath,
+        pythonPath,
         userSetPythonEnvs: [
           {
-            path: opts.pythonPath,
+            path: pythonPath,
             name: 'e2e-env',
             type: 'path',
             defaultKernel: 'python3'
@@ -74,7 +90,7 @@ export async function launchApp(opts?: {
     writeFileSync(
       join(userDataDir, 'settings.json'),
       JSON.stringify({
-        pythonPath: opts.pythonPath,
+        pythonPath,
         defaultWorkingDirectory: jupyterDir
       })
     );
@@ -84,18 +100,15 @@ export async function launchApp(opts?: {
       args: ['.', `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        HOME: jupyterDir
+        HOME: jupyterDir,
+        JLAB_E2E_ALLOW_MULTIPLE_INSTANCES: '1'
       }
     });
-    // Wait for a window to exist, then stub dialogs. stubAllDialogs evaluates
-    // the main process, and at launch a window can be mid-navigation, which
-    // makes that evaluate throw "execution context was destroyed". Retry once
-    // after a short settle so the race doesn't flake the whole suite.
+    // Wait for the first renderer before returning. Dialogs used by an E2E
+    // scenario must be stubbed by that scenario; evaluating the main process
+    // here can wait indefinitely while Electron is still composing its first
+    // WebContentsViews and hides the real startup failure behind a test timeout.
     await app.firstWindow();
-    await stubAllDialogs(app).catch(async () => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await stubAllDialogs(app);
-    });
     return { app, userDataDir, jupyterDir };
   } catch (error) {
     cleanup(userDataDir, jupyterDir);
@@ -113,10 +126,14 @@ export async function runFirstNotebookCell(
   app: ElectronApplication,
   code: string
 ): Promise<{ lab: Page; cell: Locator }> {
-  const welcome = await pageByTitle(app, /welcome/i);
+  const welcome = await welcomePage(app);
   const newNotebook = welcome.locator('#new-notebook-link');
-  await newNotebook.waitFor({ state: 'visible', timeout: 20000 });
-  await newNotebook.click();
+  await newNotebook.waitFor({ state: 'attached', timeout: 20000 });
+  await welcome.evaluate(() =>
+    ((window as unknown) as {
+      electronAPI: { newSession: (type: 'notebook') => void };
+    }).electronAPI.newSession('notebook')
+  );
 
   const lab = await pageByUrl(app, LAB_URL);
   await lab
@@ -151,6 +168,54 @@ export function cleanup(userDataDir: string, jupyterDir?: string): void {
   if (jupyterDir) {
     rmSync(jupyterDir, { recursive: true, force: true });
   }
+}
+
+// The FleetDock injector intentionally changes the welcome page presentation,
+// so select it by its stable action contract instead of an upstream title.
+export async function welcomePage(
+  app: ElectronApplication,
+  timeout = 15000
+): Promise<Page> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const page of app.windows()) {
+      try {
+        // WelcomeView is loaded from a data URL. Matching its stable action ID
+        // in the URL avoids querying a renderer while its injected shell is
+        // still being composed, which can otherwise stall the whole E2E poll.
+        if (page.url().includes('new-notebook-link')) {
+          return page;
+        }
+      } catch {
+        // page may be mid-navigation; retry on the next pass
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  const diagnostics: string[] = [];
+  for (const [index, page] of app.windows().entries()) {
+    try {
+      diagnostics.push(
+        JSON.stringify({
+          index,
+          url: page.url(),
+          title: await page.title(),
+          fleetDockShells: await page
+            .locator('.fleetdock-welcome-shell')
+            .count(),
+          notebookActions: await page.locator('#new-notebook-link').count(),
+          errorPages: await page.locator('.fleetdock-welcome-error').count()
+        })
+      );
+    } catch (error) {
+      diagnostics.push(JSON.stringify({ index, unavailable: String(error) }));
+    }
+  }
+  throw new Error(
+    `FleetDock welcome page did not expose its action contract. Windows: ${diagnostics.join(
+      '; '
+    )}`
+  );
 }
 
 // The app opens several windows (titlebar, welcome, session, manager) and most
@@ -201,5 +266,26 @@ export async function pageByUrl(
     }
     await new Promise(resolve => setTimeout(resolve, 150));
   }
-  throw new Error(`no window URL matched ${pattern}`);
+  const windows: Array<{ url: string; body?: string }> = [];
+  for (const page of app.windows()) {
+    const url = page.url();
+    let body: string | undefined;
+    try {
+      body = await Promise.race([
+        page.evaluate(() => document.body?.innerText.slice(0, 500)),
+        new Promise<undefined>(resolve =>
+          setTimeout(() => resolve(undefined), 500)
+        )
+      ]);
+    } catch {
+      // The page may be navigating or closing while diagnostics are collected.
+    }
+    windows.push({
+      url: url.startsWith('data:') ? `${url.slice(0, 80)}...` : url,
+      body
+    });
+  }
+  throw new Error(
+    `no window URL matched ${pattern}; observed ${JSON.stringify(windows)}`
+  );
 }

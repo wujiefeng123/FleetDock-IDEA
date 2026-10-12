@@ -24,13 +24,6 @@ export interface IPhysicalConnectionProbeResult {
   connected: boolean;
   telemetryReceived: boolean;
   released: boolean;
-  systemId?: number;
-  componentId?: number;
-  firmwareVersion?: string;
-  firmwareGitHash?: string;
-  hardwareUid?: string;
-  vendorName?: string;
-  productName?: string;
   telemetry?: {
     armed?: boolean;
     inAir?: boolean;
@@ -85,21 +78,9 @@ try:
         raise RuntimeError(response.message or response.code.value)
 
     result["connected"] = True
-    # [UAV-IDE MODIFY] FleetDock exposes the managed MAVSDK client through native_client.
-    client = device.native_client
-    identity = client.get_system_identity(timeout_s=2.0)
-    if identity:
-        result["systemId"] = identity.get("system_id")
-        result["componentId"] = identity.get("component_id")
-        result["firmwareVersion"] = identity.get("firmware_version")
-        result["firmwareGitHash"] = identity.get("firmware_git_hash")
-        result["hardwareUid"] = identity.get("hardware_uid")
-        result["vendorName"] = identity.get("vendor_name")
-        result["productName"] = identity.get("product_name")
-
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
-        snapshot = device.state_snapshot()
+        snapshot = device.state.snapshot()
         if any(
             getattr(snapshot, field, None) is not None
             for field in (
@@ -346,17 +327,6 @@ function parseProbeOutput(
       connected: parsed?.connected === true,
       telemetryReceived: parsed?.telemetryReceived === true,
       released: parsed?.released === true,
-      systemId: Number.isInteger(Number(parsed?.systemId))
-        ? Number(parsed.systemId)
-        : undefined,
-      componentId: Number.isInteger(Number(parsed?.componentId))
-        ? Number(parsed.componentId)
-        : undefined,
-      firmwareVersion: textOrUndefined(parsed?.firmwareVersion),
-      firmwareGitHash: textOrUndefined(parsed?.firmwareGitHash),
-      hardwareUid: textOrUndefined(parsed?.hardwareUid),
-      vendorName: textOrUndefined(parsed?.vendorName),
-      productName: textOrUndefined(parsed?.productName),
       telemetry:
         parsed?.telemetry && typeof parsed.telemetry === 'object'
           ? {

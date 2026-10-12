@@ -15,6 +15,12 @@ function makeApp(): {
   ((app as unknown) as {
     _showUpdateDialog: unknown;
   })._showUpdateDialog = showUpdateDialog;
+  ((app as unknown) as {
+    _desktopUpdateConfig: unknown;
+  })._desktopUpdateConfig = {
+    enabled: true,
+    metadataUrl: 'https://updates.example.test/latest.yml'
+  };
   return { app, showUpdateDialog };
 }
 
@@ -38,5 +44,17 @@ describe('JupyterApplication.checkForUpdates', () => {
     expect(text).not.toHaveBeenCalled();
     expect(showUpdateDialog).toHaveBeenCalledWith('error');
     expect(showUpdateDialog).not.toHaveBeenCalledWith('updates-available');
+  });
+
+  it('does not access the network when desktop updates are disabled', () => {
+    const { app, showUpdateDialog } = makeApp();
+    ((app as unknown) as {
+      _desktopUpdateConfig: unknown;
+    })._desktopUpdateConfig = { enabled: false };
+
+    app.checkForUpdates('always');
+
+    expect(net.fetch).not.toHaveBeenCalled();
+    expect(showUpdateDialog).not.toHaveBeenCalled();
   });
 });

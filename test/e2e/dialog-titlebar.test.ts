@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cleanup, launchApp, pageByTitle } from './helpers';
+import { cleanup, launchApp, welcomePage } from './helpers';
 
 // The ThemedWindow dialogs (About, Settings, Manage environments, ...) draw
 // their title bar, window title and close button through the
@@ -13,7 +13,7 @@ test('a ThemedWindow dialog renders its custom title bar and close button', asyn
   const { app, userDataDir, jupyterDir } = await launchApp();
   try {
     // Arrange: the welcome window is the renderer that opens the dialog.
-    const welcome = await pageByTitle(app, /welcome/i);
+    const welcome = await welcomePage(app);
     await welcome.waitForLoadState('domcontentloaded');
 
     // Act: open the Manage Python environments dialog through the same IPC the

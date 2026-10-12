@@ -264,7 +264,7 @@ export function getApplicationEnvValuePlaceholder(type?: string): string {
 export function getApplicationEnvValueHint(type?: string): string {
   switch (normalizeApplicationEnvType(type)) {
     case 'DronePoint':
-      return '航点会以 JSON 对象保存到变量值，运行时可从环境变量读取后解析。';
+      return '航点会以 JSON 对象保存到变量值；高度表示相对飞控 Home 点的米制高度。';
     case 'DroneRoute':
       return '航线会以 JSON 数组保存到变量值，运行时可从环境变量读取后解析。';
     case 'Drone':

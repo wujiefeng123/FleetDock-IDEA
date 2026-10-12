@@ -344,7 +344,7 @@ describe('SessionConfig.createFromArgs', () => {
 
   it('excludes pythonPath when it does not exist', () => {
     mockFs.existsSync = vi.fn((p: fs.PathLike) => {
-      return p.toString().includes('valid/dir');
+      return p.toString().replace(/\\/g, '/').includes('valid/dir');
     });
     const result = SessionConfig.createFromArgs({
       _: [],

@@ -1,8 +1,8 @@
 import { app, Menu, MenuItem } from 'electron';
+import { configureFleetDockApplicationPaths } from './fleetdock/application-paths';
 
-// Update paths to prevent Snap saving persistent data to version specific paths.
-// (Must be called before any other initialization)
-updatePathsForSnap();
+// [UAV-IDE MODIFY] Fix FleetDock data paths before configuration modules initialize their stores.
+configureFleetDockApplicationPaths();
 
 import * as fs from 'fs';
 import * as semver from 'semver';
@@ -31,6 +31,7 @@ import { ThemedWindow } from './dialog/themedwindow';
 import { appData } from './config/appdata';
 import {
   configureFleetDockApplicationBrand,
+  fleetDockDesktopUpdateConfig,
   prepareFleetDockUserConfiguration
 } from './fleetdock/application-bootstrap';
 
@@ -54,32 +55,6 @@ async function appReady(): Promise<boolean> {
  * This package fixes the PATH variable
  */
 require('fix-path')();
-
-/**
- * Update app home, appData, userData and logs paths to prevent
- * Snap to save Python environments and logs in version specific locations
- */
-function updatePathsForSnap() {
-  const isSnap = (): boolean => {
-    return process.platform === 'linux' && process.env.SNAP !== undefined;
-  };
-
-  if (!isSnap()) {
-    return;
-  }
-
-  const userHome = process.env.HOME;
-  process.env.XDG_CONFIG_HOME = `${userHome}/.config`;
-  // Jupyter uses this path (.local/share)
-  process.env.XDG_DATA_HOME = `${userHome}/.local/share`;
-  const appDataDir = process.env.XDG_CONFIG_HOME;
-  const userDataDir = `${appDataDir}/${app.getName()}`;
-
-  app.setPath('home', userHome);
-  app.setPath('appData', appDataDir);
-  app.setPath('userData', userDataDir);
-  app.setAppLogsPath(`${userDataDir}/logs`);
-}
 
 function getLogLevel(): LevelOption {
   if (isDevMode()) {
@@ -238,7 +213,10 @@ app.on('ready', async () => {
     setupJLabCommand();
     createPythonEnvsDirectory();
     argv.cwd = process.cwd();
-    jupyterApp = new JupyterApplication((argv as unknown) as ICLIArguments);
+    jupyterApp = new JupyterApplication(
+      (argv as unknown) as ICLIArguments,
+      fleetDockDesktopUpdateConfig
+    );
   } catch (error) {
     log.error(error);
     app.quit();
@@ -271,6 +249,12 @@ function processArgs(): Promise<void> {
  */
 function handleMultipleAppInstances(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
+    // [UAV-IDE MODIFY] Test runners need isolated Electron instances even when
+    // an installed product process is open; production never takes this path.
+    if (isDevMode() && process.env.JLAB_E2E_ALLOW_MULTIPLE_INSTANCES === '1') {
+      resolve();
+      return;
+    }
     // only the first instance will get the lock
     // pass cliArgs to main instance since argv provided by second-instance
     // event is out of order

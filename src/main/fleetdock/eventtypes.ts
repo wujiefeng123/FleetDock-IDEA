@@ -36,6 +36,7 @@ export enum FleetDockEventTypeMain {
   UavSimulationEnvironmentCheck = 'uav-simulation-environment-check',
   UavSimulationSceneList = 'uav-simulation-scene-list',
   UavSimulationConfigSave = 'uav-simulation-config-save',
+  UavSimulationDirectorySelect = 'uav-simulation-directory-select',
   UavSimulationSceneAddDirectory = 'uav-simulation-scene-add-directory',
   UavSimulationSceneUpdate = 'uav-simulation-scene-update',
   UavSimulationSceneDelete = 'uav-simulation-scene-delete',
@@ -49,7 +50,12 @@ export enum FleetDockEventTypeMain {
   UavSimulationDisconnectDialogChoice = 'uav-simulation-disconnect-dialog-choice',
   FleetDockHudSnapshot = 'fleetdock-hud-snapshot',
   FleetDockHudWindowOpen = 'fleetdock-hud-window-open',
-  FleetDockDebugCommand = 'fleetdock-debug-command'
+  FleetDockDebugCommand = 'fleetdock-debug-command',
+  GroundStationStatus = 'groundstation-status',
+  GroundStationLaunch = 'groundstation-launch',
+  GroundStationClose = 'groundstation-close',
+  GroundStationSelectExecutable = 'groundstation-select-executable',
+  GroundStationOpenInstallDirectory = 'groundstation-open-install-directory'
 }
 
 /**

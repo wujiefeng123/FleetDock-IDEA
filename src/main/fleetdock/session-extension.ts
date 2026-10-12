@@ -22,6 +22,7 @@ import { FleetDockTitleBarInjector } from './titlebar-injector';
 import { PRODUCT_NAME } from '../branding';
 import type { JupyterServer } from '../server';
 import { SettingType } from '../config/settings';
+import { QgcController } from '../groundstation/qgc-controller';
 
 /**
  * FleetDock features are attached here as migration layers are enabled.
@@ -98,6 +99,11 @@ class FleetDockSessionExtension implements ISessionExtension {
       getWorkspaceSettings: this._context.getWorkspaceSettings,
       isLabSender: sender => sender === this._context.getLabWebContents()
     });
+    this._qgcController = new QgcController(
+      this._context.eventManager,
+      this._context.window,
+      this._context.getLabWebContents
+    );
   }
 
   activate(): void {
@@ -107,6 +113,7 @@ class FleetDockSessionExtension implements ISessionExtension {
     this._simulationController.register();
     this._workspaceController.register();
     this._hudRuntimeController.register();
+    this._qgcController.register();
   }
 
   onTitleBarViewCreated(webContents: Electron.WebContents): void {
@@ -126,8 +133,8 @@ class FleetDockSessionExtension implements ISessionExtension {
     });
   }
 
-  onWelcomeViewCreated(webContents: Electron.WebContents): void {
-    this._welcomeInjector.attach(webContents);
+  onWelcomeViewCreated(webContents: Electron.WebContents): Promise<void> {
+    return this._welcomeInjector.attach(webContents);
   }
 
   async beforeCreateServer(options: JupyterServer.IOptions): Promise<void> {
@@ -137,16 +144,21 @@ class FleetDockSessionExtension implements ISessionExtension {
     }
 
     const pythonPath = getBundledPythonPath();
-    const environment = this._context.registry.getEnvironmentByPath(pythonPath);
-    if (environment) {
-      // [UAV-IDE MODIFY] FleetDock local sessions use the packaged runtime
-      // while leaving upstream dependency and registry behavior intact.
-      this._context
-        .getWorkspaceSettings()
-        .setValue(SettingType.pythonPath, pythonPath);
-      sessionConfig.pythonPath = pythonPath;
-      options.environment = environment;
+    // [UAV-IDE MODIFY] FleetDock local sessions must never fall back to a
+    // system Conda environment when the packaged runtime was not discovered yet.
+    const environment =
+      this._context.registry.getEnvironmentByPath(pythonPath) ||
+      this._context.registry.addEnvironment(pythonPath);
+    if (!environment) {
+      throw new Error(
+        `${PRODUCT_NAME} 内置 Python 环境不可用：${pythonPath}。请在“管理 Python 环境”中重新安装内置环境。`
+      );
     }
+    this._context
+      .getWorkspaceSettings()
+      .setValue(SettingType.pythonPath, pythonPath);
+    sessionConfig.pythonPath = pythonPath;
+    options.environment = environment;
 
     await syncManagedDroneEnvVars({
       workingDirectory: this._workingDirectory(),
@@ -184,6 +196,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   private _labInjector = new FleetDockLabInjector();
   private _workspaceController: FleetDockWorkspaceController;
   private _hudRuntimeController: FleetDockHudRuntimeController;
+  private _qgcController: QgcController;
   private _titleBarInjector = new FleetDockTitleBarInjector();
   private _welcomeInjector = new FleetDockWelcomeInjector();
 }

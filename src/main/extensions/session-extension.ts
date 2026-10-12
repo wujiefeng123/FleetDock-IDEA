@@ -73,8 +73,10 @@ export class SessionExtensionHost {
     );
   }
 
-  onWelcomeViewCreated(webContents: WebContents): void {
-    this._notify(
+  // [UAV-IDE MODIFY] Let the window coordinator wait for optional welcome
+  // decorators before exposing the view's first paint.
+  onWelcomeViewCreated(webContents: WebContents): Promise<boolean> {
+    return this._notifyAndWait(
       extension => extension.onWelcomeViewCreated?.(webContents),
       'welcome view'
     );
@@ -112,6 +114,34 @@ export class SessionExtensionHost {
         );
       });
     });
+  }
+
+  private async _notifyAndWait(
+    callback: (extension: ISessionExtension) => void | Promise<void>,
+    lifecycle: string
+  ): Promise<boolean> {
+    const results = await Promise.all(
+      this._extensions.map(extension => {
+        try {
+          return Promise.resolve(callback(extension))
+            .then(() => true)
+            .catch(error => {
+              console.error(
+                `Session extension '${extension.id}' failed during ${lifecycle}:`,
+                error
+              );
+              return false;
+            });
+        } catch (error) {
+          console.error(
+            `Session extension '${extension.id}' failed during ${lifecycle}:`,
+            error
+          );
+          return Promise.resolve(false);
+        }
+      })
+    );
+    return results.every(result => result);
   }
 
   private _extensions: ISessionExtension[];

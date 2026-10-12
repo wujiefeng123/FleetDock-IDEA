@@ -182,6 +182,12 @@ export interface UavSimulationStatus {
   commandChannel?: UavSimulationCommandChannelStatus;
   sensorService?: UavSimulationSensorServiceStatus;
   mediaService?: UavSimulationMediaServiceStatus;
+  groundStationLink?: {
+    targetPort: number;
+    state: 'starting' | 'ready' | 'failed';
+    configuredVehicles: number;
+    error?: string;
+  };
   drones?: Array<{
     droneId: string;
     vehicleName: string;
@@ -200,8 +206,11 @@ export interface UavSimulationGeneratedDrone {
   vehicleName: string;
   systemId: number;
   px4AutostartId: number;
+  px4ParameterOverrides: Readonly<Record<string, number>>;
   projectAirsimAirframe: string;
   robotTemplate: string;
+  actuatorOrder: readonly string[];
+  rotorCount: number;
   px4Instance: number;
   simulatorPort: number;
   mavlinkPort: number;

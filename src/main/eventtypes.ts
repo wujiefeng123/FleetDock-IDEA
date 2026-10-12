@@ -24,6 +24,8 @@ export enum EventTypeMain {
   HideEnvSelectPopup = 'hide-env-select-popup',
   SetRemoteServerOptions = 'set-remote-server-options',
   ShowAppContextMenu = 'show-app-context-menu',
+  // [UAV-IDE MODIFY] Gate synchronous session preparation on a rendered transition frame.
+  ProgressViewPainted = 'progress-view-painted',
   HideProgressView = 'hide-progress-view',
   ShowWelcomeView = 'show-welcome-view',
   ShowServerSettings = 'show-server-settings',

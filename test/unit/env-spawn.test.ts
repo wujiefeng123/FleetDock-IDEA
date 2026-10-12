@@ -93,19 +93,29 @@ beforeEach(() => {
 });
 
 describe('runCommandInEnvironment', () => {
-  it('spawns bash with -c and the env script and resolves true on exit code 0', async () => {
+  it('spawns the platform shell with the env script and resolves true on exit code 0', async () => {
     mockSpawn.mockReturnValue(makeChild({ code: 0 }));
     const result = await env.runCommandInEnvironment(
       '/envs/a',
       'jupyter --version'
     );
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'bash',
-      ['-c', 'SCRIPT'],
-      expect.objectContaining({
-        env: expect.objectContaining({ BASH_SILENCE_DEPRECATION_WARNING: '1' })
-      })
-    );
+    if (process.platform === 'win32') {
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'cmd',
+        ['/c', 'SCRIPT'],
+        expect.objectContaining({ windowsVerbatimArguments: true })
+      );
+    } else {
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'bash',
+        ['-c', 'SCRIPT'],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            BASH_SILENCE_DEPRECATION_WARNING: '1'
+          })
+        })
+      );
+    }
     expect(result).toBe(true);
   });
 

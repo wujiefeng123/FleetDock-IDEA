@@ -14,16 +14,17 @@ const {
 } = require('../build/out/main/uavsimulation/config/project-airsim-sensor-config.js');
 
 function templatePaths() {
-  return [
-    path.join(
-      __dirname,
-      '..',
-      'dist-resources',
-      'skylab-simulation',
-      'templates',
-      'robot_quadrotor_px4.jsonc'
-    )
-  ].filter(filePath => fs.existsSync(filePath));
+  const directory = path.join(
+    __dirname,
+    '..',
+    'dist-resources',
+    'skylab-simulation',
+    'templates'
+  );
+  return fs
+    .readdirSync(directory)
+    .filter(name => /^robot_.+_px4\.jsonc$/.test(name))
+    .map(name => path.join(directory, name));
 }
 
 function checkTemplate(filePath) {

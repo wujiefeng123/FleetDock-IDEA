@@ -46,6 +46,12 @@ function createLaunchScript(
   // removed once jupyter_server requires traitlets>5.0
   const launchArgs = ['python', '-m', 'jupyterlab'];
 
+  if (isWin) {
+    // [UAV-IDE MODIFY] Conda activation may change the batch working directory;
+    // pin Jupyter's content root to the selected application workspace.
+    launchArgs.push(`--ServerApp.root_dir="${serverInfo.workingDirectory}"`);
+  }
+
   const strPort = port.toString();
 
   for (const arg of serverLaunchArgsFixed) {
@@ -144,9 +150,12 @@ function createLaunchScript(
   }
 
   const ext = isWin ? 'bat' : 'sh';
-  const scriptPath = createTempFile(`launch.${ext}`, script);
+  // [UAV-IDE MODIFY] Windows cmd.exe can corrupt CALL commands in LF-only
+  // batch files, so preserve native CRLF boundaries for the launch script.
+  const scriptContents = isWin ? script.replace(/\r?\n/g, '\r\n') : script;
+  const scriptPath = createTempFile(`launch.${ext}`, scriptContents);
 
-  console.debug(`Server launch script:\n${script}`);
+  console.debug(`Server launch script:\n${scriptContents}`);
 
   if (!isWin) {
     fs.chmodSync(scriptPath, 0o755);

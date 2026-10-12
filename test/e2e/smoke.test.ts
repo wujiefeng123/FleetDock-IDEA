@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cleanup, launchApp, pageByTitle } from './helpers';
+import { cleanup, launchApp, welcomePage } from './helpers';
 
 test('app launches and opens at least one window', async () => {
   const { app, userDataDir, jupyterDir } = await launchApp();
@@ -17,11 +17,14 @@ test('on first run the Welcome window renders', async () => {
   try {
     // Selecting by title rather than firstWindow(): the app opens several
     // windows and only this one is the welcome view.
-    const welcome = await pageByTitle(app, /welcome/i);
+    const welcome = await welcomePage(app);
     await welcome.waitForLoadState('domcontentloaded');
-    // Assert a Welcome-specific element, not just body, so a blank or error
-    // page would fail rather than pass.
-    await expect(welcome.locator('#new-notebook-link')).toBeVisible();
+    // Assert the injected product shell, not the hidden upstream action rows,
+    // so a blank, upstream-only or error page cannot pass this check.
+    await expect(welcome.locator('.fleetdock-welcome-shell')).toBeVisible();
+    await expect(welcome.locator('.fleetdock-welcome-brand-name')).toHaveText(
+      'FleetDock IDEA'
+    );
   } finally {
     await app.close();
     cleanup(userDataDir, jupyterDir);
@@ -35,7 +38,7 @@ test('the session window composes multiple views (titlebar + welcome + content)'
     // composition should expose several views (titlebar, welcome, content area)
     // as separate pages. A dropped view after the Phase 3 WebContentsView
     // migration would lower this count.
-    await pageByTitle(app, /welcome/i);
+    await welcomePage(app);
     await expect
       .poll(() => app.windows().length, { timeout: 10000 })
       .toBeGreaterThanOrEqual(3);
@@ -66,7 +69,7 @@ test('app shuts down cleanly without hanging', async () => {
 test('an electronAPI channel round-trips to the main process', async () => {
   const { app, userDataDir, jupyterDir } = await launchApp();
   try {
-    const welcome = await pageByTitle(app, /welcome/i);
+    const welcome = await welcomePage(app);
     await welcome.waitForLoadState('domcontentloaded');
     const isDark = await welcome.evaluate(() =>
       ((window as unknown) as {

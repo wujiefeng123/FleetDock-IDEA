@@ -1,5 +1,7 @@
 // [UAV-IDE MODIFY] Focused Electron-main checks for FleetDock device-id bindings and generated runtime errors.
 
+/* eslint-disable camelcase -- [UAV-IDE MODIFY] Validate published FleetDock wire names without rewriting their contract keys. */
+
 const assert = require('assert');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -215,6 +217,7 @@ app
       );
 
       const first = physicalDevice('px4-one', 'serial://COM7:115200');
+      first.fleetdock.params.mavsdk_server_port = 50600;
       ensureFleetDockRuntimeArtifacts({
         workingDirectory: workspace,
         config: config([{ type: 'Drone', name: 'drone1', value: first.id }]),
@@ -223,7 +226,9 @@ app
       const runtimePath = path.join(workspace, 'fleetdock_runtime.py');
       const runtimeStubPath = path.join(workspace, 'fleetdock_runtime.pyi');
       let runtime = fs.readFileSync(runtimePath, 'utf8');
+      let runtimeStub = fs.readFileSync(runtimeStubPath, 'utf8');
       assert(runtime.includes('serial://COM7:115200'));
+      assert(!runtime.includes('mavsdk_server_port'));
       assert(runtime.includes('"connectionOwner": "sdk-runtime" if connected'));
       assert(runtime.includes('"/diagnostic-command"'));
       assert(runtime.includes('"commandHistory": list(self._command_history)'));
@@ -325,12 +330,17 @@ app
         devices: [simulation]
       });
       runtime = fs.readFileSync(runtimePath, 'utf8');
+      runtimeStub = fs.readFileSync(runtimeStubPath, 'utf8');
       assert(runtime.includes('IdeSimulationSensorProxy'));
       assert(runtime.includes('airsimVehicleName'));
       assert(runtime.includes('vehicle_name=airsim_vehicle_name'));
       assert(runtime.includes('excluded_kinds=("rgb_camera",)'));
-      assert(runtime.includes('class _FleetDockRoutes:'));
-      assert(runtime.includes('routes = _FleetDockRoutes()'));
+      assert(!runtime.includes('class _FleetDockRoutes:'));
+      assert(!runtime.includes('routes = _FleetDockRoutes()'));
+      assert(!runtime.includes('AltitudeReference'));
+      assert(!runtimeStub.includes('class _FleetDockRoutes:'));
+      assert(!runtimeStub.includes('routes: _FleetDockRoutes'));
+      assert(!runtimeStub.includes('Route'));
       assert(runtime.includes('rtsp://127.0.0.1:8554/Drone1_camera_front'));
       assert(
         runtime.includes('SensorSourceKind(params["camera_stream_source"])')
@@ -416,26 +426,14 @@ app
           [
             'from fleetdock_runtime import FleetDock',
             'FleetDock.init()',
-            'local_route = FleetDock.routes.from_env("SIM_ROUTE", altitude_m=15.0)',
-            'assert local_route.name == "SIM_ROUTE"',
-            'assert len(local_route.waypoints) == 2',
-            'assert local_route.waypoints[0].x_m == 0.0',
-            'assert local_route.waypoints[0].y_m == 0.0',
-            'assert local_route.waypoints[0].z_m == 15.0',
-            'assert 11.0 < local_route.waypoints[1].x_m < 11.2',
-            'assert 7.5 < local_route.waypoints[1].y_m < 7.7',
-            'gps_route = FleetDock.routes.from_env("SIM_ROUTE", mode="gps")',
-            'assert gps_route.waypoints[0].latitude_deg == 47.0',
-            'assert gps_route.waypoints[0].longitude_deg == -122.0',
-            'assert gps_route.waypoints[0].altitude_m == 130.0',
-            'gps_override_route = FleetDock.routes.from_env("SIM_ROUTE", mode="gps", altitude_m=150.0)',
-            'assert all(waypoint.altitude_m == 150.0 for waypoint in gps_override_route.waypoints)',
+            'raw_route = __import__("json").loads(FleetDock.envs.require("SIM_ROUTE"))',
+            'assert raw_route == [{"lat": 47, "lon": -122, "alt": 130}, {"lat": 47.0001, "lon": -121.9999, "alt": 131}]',
             'test_case = __import__("unittest").TestCase()',
-            'test_case.assertRaisesRegex(ValueError, "mode", FleetDock.routes.from_env, "SIM_ROUTE", mode="unsupported")',
-            'test_case.assertRaisesRegex(ValueError, "exceeding", FleetDock.routes.from_env, "SIM_ROUTE", max_distance_m=1.0)',
-            'test_case.assertRaisesRegex(KeyError, "MISSING_ROUTE", FleetDock.routes.from_env, "MISSING_ROUTE")',
+            'test_case.assertRaisesRegex(KeyError, "MISSING_ROUTE", FleetDock.envs.require, "MISSING_ROUTE")',
             'device = FleetDock.devices.sim_drone',
-            'device.state._update(connected=True, armed=True, in_air=True, flight_mode="mission", battery_remaining_fraction=0.75, relative_altitude_m=12.5, local_z_m=-12.5, velocity_x_m_s=3.0, velocity_y_m_s=4.0, velocity_z_m_s=0.5, roll_deg=1.0, pitch_deg=2.0, yaw_deg=3.0, health_local_position_ok=True, health_global_position_ok=True, health_home_position_ok=True, health_armable=True, last_event_updated_at_s=__import__("time").monotonic())',
+            'now = __import__("time").monotonic()',
+            'device.state._update(connected=True, armed=True, in_air=True, flight_mode="mission", battery_remaining_fraction=0.75, relative_altitude_m=12.5, global_position_updated_at_s=now, local_z_m=-12.5, local_position_updated_at_s=now, velocity_x_m_s=3.0, velocity_y_m_s=4.0, velocity_z_m_s=0.5, roll_deg=1.0, pitch_deg=2.0, yaw_deg=3.0, health_local_position_ok=True, health_global_position_ok=True, health_home_position_ok=True, health_armable=True, last_event_updated_at_s=now)',
+            'FleetDock.hud._event_updated_at_s["sim_drone"] = {"motion.velocity.updated": now, "motion.attitude.updated": now}',
             'snapshot = FleetDock.hud.snapshot(FleetDock)["devices"][0]',
             'assert snapshot["connected"] is True',
             'assert snapshot["armed"] is True',
@@ -443,13 +441,22 @@ app
             'assert snapshot["flightMode"] == "mission"',
             'assert snapshot["batteryRemaining"] == 0.75',
             'assert snapshot["global"]["relativeAltitudeM"] == 12.5',
+            // [UAV-IDE MODIFY] Freshness stays an internal selection rule; the compact HUD contract exposes no source or color state.
+            'assert "source" not in snapshot["global"] and "stale" not in snapshot["global"]',
             'assert snapshot["local"]["z"] == -12.5',
             'assert snapshot["velocity"] == {"x": 3.0, "y": 4.0, "z": 0.5}',
             'assert snapshot["attitude"] == {"roll": 1.0, "pitch": 2.0, "yaw": 3.0}',
             'assert snapshot["health"] == {"localPositionOk": True, "globalPositionOk": True, "homePositionOk": True, "armable": True}',
             'assert isinstance(snapshot["telemetryAgeMs"], int)',
+            'assert "sim_drone" in FleetDock.hud._telemetry_releases',
+            'FleetDock.hud._last_snapshot_requested_at_s = now - FleetDock.hud._OBSERVATION_TIMEOUT_S - 1.0',
+            'FleetDock.hud._reconcile_hud_telemetry(FleetDock)',
+            'assert FleetDock.hud._telemetry_releases == {}',
             'assert snapshot["sensors"] == []',
             'assert FleetDock.hud._sensor_value(float("nan")) is None',
+            // [UAV-IDE MODIFY] Real aircraft must not inherit HUD event or sensor subscriptions.
+            'assert FleetDock.hud._automatic_subscriptions_enabled({"metadata": {"source": "real", "runtimeKind": "physical"}}) is False',
+            'assert FleetDock.hud._automatic_subscriptions_enabled({"metadata": {"source": "simulation", "runtimeKind": "simulation"}}) is True',
             'strict_json_payload = FleetDock.hud._json_safe({"nan": float("nan"), "positive_infinity": float("inf"), "nested": [1.0, float("-inf")]})',
             'assert strict_json_payload == {"nan": None, "positive_infinity": None, "nested": [1.0, None]}',
             '__import__("json").dumps(strict_json_payload, allow_nan=False)',
@@ -486,6 +493,12 @@ app
             'empty_state = types.SimpleNamespace(snapshot=lambda: types.SimpleNamespace(connected=True, armed=None, in_air=None, landed_state=None, flight_mode=None, failsafe=None, last_event_updated_at_s=None, battery_remaining_fraction=None, latitude_deg=None, longitude_deg=None, absolute_altitude_m=None, relative_altitude_m=None, home_latitude_deg=None, home_longitude_deg=None, home_absolute_altitude_m=None, local_x_m=None, local_y_m=None, local_z_m=None, velocity_x_m_s=None, velocity_y_m_s=None, velocity_z_m_s=None, roll_deg=None, pitch_deg=None, yaw_deg=None, health_local_position_ok=None, health_global_position_ok=None, health_home_position_ok=None, health_armable=None))',
             'fallback_device = types.SimpleNamespace(sensors=fallback_sensors, state=empty_state)',
             'FleetDock.hud._reconcile_sensors("fallback", fallback_device)',
+            'stale_state = empty_state.snapshot()',
+            'stale_state.latitude_deg = 1.0; stale_state.longitude_deg = 2.0; stale_state.absolute_altitude_m = 999.0; stale_state.relative_altitude_m = 40.0; stale_state.global_position_updated_at_s = now - 10.0',
+            'stale_state.local_x_m = -76.0; stale_state.local_y_m = 23.0; stale_state.local_z_m = -40.0; stale_state.local_position_updated_at_s = now - 10.0',
+            'stale_state.velocity_x_m_s = 3.0; stale_state.velocity_y_m_s = 4.0; stale_state.velocity_z_m_s = 0.0',
+            'empty_state.snapshot = lambda: stale_state',
+            'FleetDock.hud._event_updated_at_s["fallback"] = {"motion.velocity.updated": now - 10.0, "motion.attitude.updated": now - 10.0}',
             'fallback_snapshot = FleetDock.hud._device_snapshot("fallback", {"device_id": "fallback", "name": "fallback"}, fallback_device)',
             'assert fallback_snapshot["global"]["lat"] == 47.0',
             'assert fallback_snapshot["global"]["absoluteAltitudeM"] == 135.0',

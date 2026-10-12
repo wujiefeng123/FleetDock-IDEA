@@ -1,6 +1,8 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
+/* eslint-disable camelcase -- [UAV-IDE MODIFY] Persist FleetDock SDK parameter names without changing the stored data contract. */
+
 // [UAV-IDE MODIFY] Persist the global UAV device registry in a dedicated JSON store so device management stays separate from per-app settings.
 
 import * as fs from 'fs';
@@ -9,8 +11,7 @@ import * as crypto from 'crypto';
 import { app } from 'electron';
 import {
   allocatePort,
-  allocateUniqueSimulationMavlinkPort,
-  mavsdkServerPortForSimulationMavlinkPort
+  allocateUniqueSimulationMavlinkPort
 } from '../port-allocator';
 import {
   DroneDevice,
@@ -268,15 +269,8 @@ function normalizeFleetDockConfig(
       source === 'real' && physicalConnection?.kind === 'serial'
         ? 10
         : Number(params.timeout_s || 30);
-    if (source === 'simulation') {
-      // [UAV-IDE MODIFY] Persist a stable MAVSDK gRPC port per simulation device to avoid cross-kernel auto-allocation collisions.
-      params.mavsdk_server_port = mavsdkServerPortForSimulationMavlinkPort(
-        mavlinkPort
-      );
-    } else {
-      // [UAV-IDE MODIFY] Never carry simulation-only gRPC allocation into physical links.
-      delete params.mavsdk_server_port;
-    }
+    // [UAV-IDE MODIFY] Let the SDK request an OS-approved loopback port; Hyper-V exclusions vary by host and boot.
+    delete params.mavsdk_server_port;
   } else if (
     builder === 'dji_matrice_350_rtk' ||
     builder === 'dji_mavic_3_enterprise'
@@ -531,12 +525,10 @@ function normalizeDrone(
       ...defaults.uav,
       ...(value.uav || {}),
       airframeType,
-      px4AutostartId: Number(
-        value.uav?.px4AutostartId || airframe.px4AutostartId
-      ),
-      projectAirsimAirframe:
-        value.uav?.projectAirsimAirframe || airframe.projectAirsimAirframe,
-      robotTemplate: value.uav?.robotTemplate || airframe.robotTemplate,
+      // [UAV-IDE MODIFY] Recompute profile-derived values while loading so legacy quad-template mappings migrate without rewriting user-owned identity or ports.
+      px4AutostartId: airframe.px4AutostartId,
+      projectAirsimAirframe: airframe.projectAirsimAirframe,
+      robotTemplate: airframe.robotTemplate,
       vehicleName: String(
         value.uav?.vehicleName ||
           simulation.airsimVehicleName ||

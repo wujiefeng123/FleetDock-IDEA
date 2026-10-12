@@ -1,4 +1,5 @@
 // [UAV-IDE MODIFY] Provide a right-side FleetDock command center so UAV workflows stay beside, not inside, the code editor.
+/* eslint-disable camelcase, @typescript-eslint/no-unused-vars -- [UAV-IDE MODIFY] Preserve published FleetDock payload keys and compatibility helpers during the upstream migration. */
 (function () {
   if (window.__fleetDockCommandCenterInstalled) {
     return;
@@ -12,6 +13,8 @@
   window.__fleetDockCommandCenterInstalled = true;
   const STORAGE_OPEN = 'jld-skylab-command-center-open';
   const STORAGE_FIRST_OPEN_PREFIX = 'jld-skylab-command-center-first-open:';
+  // [UAV-IDE MODIFY] Keep the unfinished publishing workflow reversible while hiding every user-facing entry point.
+  const PUBLISH_UI_ENABLED = false;
   const SIMULATION_START_LOCK_STATES = new Set([
     'checking',
     'awaiting-confirmation',
@@ -91,6 +94,11 @@
     simulationEnvironmentCheckId: 0,
     simulationStatus: null,
     stoppingSimulation: false,
+    // [UAV-IDE MODIFY] Keep QGC discovery and launch feedback inside the ground-station tab.
+    groundStationStatus: null,
+    groundStationLoading: false,
+    groundStationLaunching: false,
+    groundStationClosing: false,
     // [UAV-IDE MODIFY] Keep runtime interactions and diagnostics local to the simulation sidebar.
     simulationCommandPending: 0,
     simulationCommandResult: null,
@@ -147,21 +155,21 @@
     },
     hexarotor: {
       label: '\u516d\u65cb\u7ffc',
-      px4AutostartId: 6001,
+      px4AutostartId: 10016,
       projectAirsimAirframe: 'hexarotor-x',
-      robotTemplate: 'robot_quadrotor_px4.jsonc'
+      robotTemplate: 'robot_hexarotor_px4.jsonc'
     },
     vtol_tailsitter: {
       label: '\u5782\u76f4\u7ffc Tailsitter',
-      px4AutostartId: 13200,
+      px4AutostartId: 1041,
       projectAirsimAirframe: 'vtol-quad-x-tailsitter',
-      robotTemplate: 'robot_quadrotor_px4.jsonc'
+      robotTemplate: 'robot_vtol_tailsitter_px4.jsonc'
     },
     vtol_tiltrotor: {
       label: '\u5782\u76f4\u7ffc Tiltrotor',
-      px4AutostartId: 13030,
+      px4AutostartId: 1042,
       projectAirsimAirframe: 'vtol-quad-tiltrotor',
-      robotTemplate: 'robot_quadrotor_px4.jsonc'
+      robotTemplate: 'robot_vtol_tiltrotor_px4.jsonc'
     }
   };
 
@@ -402,6 +410,97 @@
     }
   }
 
+  async function refreshGroundStationStatus(renderBefore) {
+    state.groundStationLoading = true;
+    if (renderBefore !== false) {
+      render();
+    }
+    try {
+      state.groundStationStatus = api.getGroundStationStatus
+        ? await api.getGroundStationStatus()
+        : {
+            installed: false,
+            running: false,
+            executablePath: '',
+            version: '',
+            message: '当前版本未提供地面站集成接口。'
+          };
+    } catch (error) {
+      state.groundStationStatus = {
+        installed: false,
+        running: false,
+        executablePath: '',
+        version: '',
+        message: String(error?.message || error)
+      };
+    } finally {
+      state.groundStationLoading = false;
+      render();
+    }
+  }
+
+  async function launchGroundStation() {
+    if (
+      state.groundStationLaunching ||
+      state.groundStationClosing ||
+      !api.launchGroundStation
+    ) {
+      return;
+    }
+    state.groundStationLaunching = true;
+    render();
+    try {
+      state.groundStationStatus = await api.launchGroundStation();
+      toast('QGroundControl 已启动');
+    } catch (error) {
+      toast(String(error?.message || error));
+    } finally {
+      state.groundStationLaunching = false;
+      render();
+    }
+  }
+
+  async function closeGroundStation() {
+    if (
+      state.groundStationLaunching ||
+      state.groundStationClosing ||
+      !api.closeGroundStation
+    ) {
+      return;
+    }
+    state.groundStationClosing = true;
+    render();
+    try {
+      state.groundStationStatus = await api.closeGroundStation();
+      toast('QGroundControl 已关闭');
+    } catch (error) {
+      toast(String(error?.message || error));
+    } finally {
+      state.groundStationClosing = false;
+      render();
+    }
+  }
+
+  async function selectGroundStationExecutable() {
+    if (!api.selectGroundStationExecutable) {
+      return;
+    }
+    try {
+      state.groundStationStatus = await api.selectGroundStationExecutable();
+      render();
+    } catch (error) {
+      toast(String(error?.message || error));
+    }
+  }
+
+  async function openGroundStationInstallDirectory() {
+    try {
+      await api.openGroundStationInstallDirectory?.();
+    } catch (error) {
+      toast(String(error?.message || error));
+    }
+  }
+
   function normalizeSimulationState(value) {
     return String(value || '').toLowerCase();
   }
@@ -539,9 +638,11 @@
     if (tab === 'device') {
       return 'devices';
     }
-    return ['app', 'devices', 'simulation', 'publish'].includes(tab)
-      ? tab
-      : 'app';
+    const visibleTabs = ['app', 'devices', 'simulation', 'groundstation'];
+    if (PUBLISH_UI_ENABLED) {
+      visibleTabs.push('publish');
+    }
+    return visibleTabs.includes(tab) ? tab : 'app';
   }
 
   function openCenter(tab) {
@@ -558,6 +659,11 @@
       void refreshUavSimulationStatus(false);
       scheduleHudPolling();
       scheduleCameraStreams();
+    } else if (state.activeTab === 'groundstation') {
+      void refreshGroundStationStatus(false);
+      void refreshUavSimulationStatus(false);
+      window.clearInterval(window.__jldSkyLabHudTimer);
+      closeCameraPlayers();
     } else {
       window.clearInterval(window.__jldSkyLabHudTimer);
       closeCameraPlayers();
@@ -760,6 +866,9 @@
 
   function deviceToDraft(device) {
     const telemetry = device?.telemetry || {};
+    const airframeType =
+      device?.uav?.airframeType || device?.simulation?.model || 'quadrotor';
+    const airframe = getUavAirframeProfile(airframeType);
     return {
       id: device?.id || '',
       name: device?.name || '',
@@ -790,14 +899,11 @@
         device?.simulation?.airsimVehicleName ||
         device?.airsimVehicleName ||
         'Drone1',
-      airframeType:
-        device?.uav?.airframeType || device?.simulation?.model || 'quadrotor',
-      px4AutostartId: device?.uav?.px4AutostartId || 10016,
-      projectAirsimAirframe:
-        device?.uav?.projectAirsimAirframe || 'quadrotor-x',
-      robotTemplate: device?.uav?.robotTemplate || 'robot_quadrotor_px4.jsonc',
-      model:
-        device?.uav?.airframeType || device?.simulation?.model || 'quadrotor',
+      airframeType,
+      px4AutostartId: airframe.px4AutostartId,
+      projectAirsimAirframe: airframe.projectAirsimAirframe,
+      robotTemplate: airframe.robotTemplate,
+      model: airframeType,
       px4StartMode: device?.simulation?.px4StartMode || 'ide-managed',
       readOnly: device?.real?.readOnly !== false,
       allowCommand: !!device?.real?.allowCommand,
@@ -875,10 +981,9 @@
       airsimVehicleName: draft.airsimVehicleName || draft.name || 'Drone1',
       uav: {
         airframeType,
-        px4AutostartId: Number(draft.px4AutostartId || airframe.px4AutostartId),
-        projectAirsimAirframe:
-          draft.projectAirsimAirframe || airframe.projectAirsimAirframe,
-        robotTemplate: draft.robotTemplate || airframe.robotTemplate,
+        px4AutostartId: airframe.px4AutostartId,
+        projectAirsimAirframe: airframe.projectAirsimAirframe,
+        robotTemplate: airframe.robotTemplate,
         vehicleName: draft.airsimVehicleName || draft.name || 'Drone1',
         systemId: Number(draft.systemId) || 1
       },
@@ -1175,6 +1280,29 @@
       toast(String(error && error.message ? error.message : error));
     }
   }
+
+  async function browseSimulationConfigDirectory(field) {
+    if (field !== 'px4Path' && field !== 'scenePackageDirectory') {
+      return;
+    }
+    if (!api.selectUavSimulationDirectory) {
+      toast('当前版本不支持选择仿真配置目录');
+      return;
+    }
+    try {
+      const selectedPath = await api.selectUavSimulationDirectory({
+        field,
+        currentPath: state.simulationConfigDraft[field] || ''
+      });
+      if (selectedPath) {
+        state.simulationConfigDraft[field] = selectedPath;
+        render();
+      }
+    } catch (error) {
+      toast(String(error && error.message ? error.message : error));
+    }
+  }
+
   async function saveSceneInline() {
     const draft = state.sceneDraft || defaultSceneDraft();
     if (!draft.id) {
@@ -1536,6 +1664,8 @@
         '<svg class="jld-skylab-rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9h8l2 8H6z"></path><path d="M9.5 9 11 5h2l1.5 4"></path><path d="M8 17v2"></path><path d="M16 17v2"></path><path d="M9 13h.01"></path><path d="M15 13h.01"></path></svg>',
       simulation:
         '<svg class="jld-skylab-rail-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"></circle><path d="M12 4v6"></path><path d="M12 14v6"></path><path d="M4 12h6"></path><path d="M14 12h6"></path><path d="M7.8 7.8 10.6 10.6"></path><path d="M13.4 13.4l2.8 2.8"></path><path d="M16.2 7.8 13.4 10.6"></path><path d="M10.6 13.4l-2.8 2.8"></path></svg>',
+      groundstation:
+        '<svg class="jld-skylab-rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14"></path><path d="M8 19l2-7h4l2 7"></path><path d="M12 12V7"></path><path d="M9 8.5a4 4 0 0 1 6 0"></path><path d="M6.5 6a7.5 7.5 0 0 1 11 0"></path></svg>',
       publish:
         '<svg class="jld-skylab-rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 17H7a4 4 0 1 1 .8-7.9A5 5 0 0 1 17 10a3.5 3.5 0 1 1 .5 7H16"></path><path d="M12 16V9"></path><path d="M9.5 11.5 12 9l2.5 2.5"></path></svg>'
     };
@@ -1580,8 +1710,11 @@
       ['app', '应用'],
       ['devices', '设备'],
       ['simulation', '仿真'],
-      ['publish', '发布']
+      ['groundstation', '地面站']
     ];
+    if (PUBLISH_UI_ENABLED) {
+      tabs.push(['publish', '发布']);
+    }
     return tabs
       .map(
         tab =>
@@ -1641,9 +1774,11 @@
           '<span>' +
           (state.appEditing ? '收起编辑' : '编辑基础信息') +
           '</span></button>' +
-          '<button class="jld-skylab-btn jld-skylab-btn-icon" data-variant="primary" data-action="open-publish">' +
-          railIcon('publish') +
-          '<span>打开发布向导</span></button>' +
+          (PUBLISH_UI_ENABLED
+            ? '<button class="jld-skylab-btn jld-skylab-btn-icon" data-variant="primary" data-action="open-publish">' +
+              railIcon('publish') +
+              '<span>打开发布向导</span></button>'
+            : '') +
           '</div>' +
           (state.appEditing ? renderAppQuickForm() : '')
       ) +
@@ -1730,11 +1865,18 @@
   }
 
   function renderDevicesPanel() {
-    // [UAV-IDE MODIFY] The command-center device tab is only an entry point; CRUD lives in the standalone device library dialog.
+    // [UAV-IDE MODIFY] Keep CRUD in the standalone device library while sidebar cards deep-link to device details.
+    return renderDeviceLibraryEntry() + renderDeviceList();
+  }
+
+  function renderDeviceLibraryEntry() {
     return (
-      '<div class="jld-skylab-section jld-skylab-section-tight"><div class="jld-skylab-section-title">\u8bbe\u5907\u5e93</div><div class="jld-skylab-row-sub">\u8bbe\u5907\u7684\u6dfb\u52a0\u3001\u7f16\u8f91\u3001\u5220\u9664\u7edf\u4e00\u5728\u72ec\u7acb\u8bbe\u5907\u5e93\u5f39\u7a97\u4e2d\u5904\u7406\u3002</div></div>' +
-      renderDeviceList() +
-      '<div class="jld-skylab-device-footer"><button class="jld-skylab-btn" data-variant="primary" data-action="open-device-manager">\u6253\u5f00\u8bbe\u5907\u5e93</button></div>'
+      '<button type="button" class="jld-skylab-device-library-entry" data-action="open-device-manager" aria-label="\u6253\u5f00\u8bbe\u5907\u5e93\uff0c\u6dfb\u52a0\u3001\u7f16\u8f91\u6216\u5220\u9664\u8bbe\u5907">' +
+      '<span class="jld-skylab-device-library-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="5" y="7" width="22" height="18" rx="5"></rect><path d="M10 13h12M10 18h7"></path><circle cx="23" cy="21" r="5"></circle><path d="M23 18.5v5M20.5 21h5"></path></svg></span>' +
+      '<span class="jld-skylab-device-library-copy"><strong>\u8bbe\u5907\u7ba1\u7406</strong><small>\u6dfb\u52a0\u3001\u7f16\u8f91\u3001\u5220\u9664\u53ca\u914d\u7f6e\u4f20\u611f\u5668</small></span>' +
+      '<span class="jld-skylab-device-library-meta"><span>' +
+      state.devices.length +
+      ' \u53f0</span><b aria-hidden="true">&rsaquo;</b></span></button>'
     );
   }
 
@@ -1934,7 +2076,7 @@
       return (
         '<div class="jld-skylab-guide">' +
         '<div class="jld-skylab-section-title">\u8fd8\u6ca1\u6709\u8bbe\u5907</div>' +
-        '<p>\u70b9\u51fb\u4e0b\u65b9\u201c\u6dfb\u52a0\u8bbe\u5907\u201d\u521b\u5efa\u8bbe\u5907\u3002\u5f53\u524d\u4eff\u771f\u542f\u52a8\u53ea\u4f7f\u7528\u65e0\u4eba\u673a\u4eff\u771f\u8bbe\u5907\u3002</p>' +
+        '<p>\u901a\u8fc7\u4e0a\u65b9\u201c\u8bbe\u5907\u7ba1\u7406\u201d\u6dfb\u52a0\u7b2c\u4e00\u53f0\u8bbe\u5907\u3002\u5f53\u524d\u4eff\u771f\u542f\u52a8\u53ea\u4f7f\u7528\u65e0\u4eba\u673a\u4eff\u771f\u8bbe\u5907\u3002</p>' +
         '</div>'
       );
     }
@@ -1949,27 +2091,33 @@
           const isPhysical =
             runtimeKind === 'physical' || device.source === 'real';
           return (
-            '<div class="jld-skylab-row jld-skylab-device-card"><div class="jld-skylab-device-card-main"><div class="jld-skylab-device-type-icon" data-category="' +
+            '<div class="jld-skylab-row jld-skylab-device-card-shell" data-has-debug="' +
+            (isPhysical ? '1' : '0') +
+            '"><button type="button" class="jld-skylab-device-card" data-action="open-device-manager" data-device-id="' +
+            esc(device.id) +
+            '" aria-label="\u67e5\u770b ' +
+            esc(device.name || '\u672a\u547d\u540d\u8bbe\u5907') +
+            ' \u7684\u8bbe\u5907\u8be6\u60c5"><span class="jld-skylab-device-card-main"><span class="jld-skylab-device-type-icon" data-category="' +
             esc(category) +
             '">' +
             deviceCategoryIcon(category) +
-            '</div><div class="jld-skylab-device-card-content"><strong class="jld-skylab-device-card-name">' +
+            '</span><span class="jld-skylab-device-card-content"><strong class="jld-skylab-device-card-name">' +
             esc(device.name || '\u672a\u547d\u540d\u8bbe\u5907') +
-            '</strong><div class="jld-skylab-device-card-facts"><span>' +
+            '</strong><span class="jld-skylab-device-card-facts"><span>' +
             esc(DEVICE_CATEGORY_LABELS[category] || category) +
             '</span><span data-source="' +
             esc(runtimeKind) +
             '">' +
             esc(RUNTIME_KIND_LABELS[runtimeKind] || runtimeKind) +
-            '</span></div></div></div><div class="jld-skylab-row-actions">' +
+            '</span></span></span></span><span class="jld-skylab-device-card-chevron" aria-hidden="true">&rsaquo;</span></button>' +
             (isPhysical
-              ? '<button class="jld-skylab-btn" data-variant="primary" data-action="open-real-debugger" data-device-id="' +
+              ? '<button type="button" class="jld-skylab-device-debug-action" data-action="open-real-debugger" data-device-id="' +
                 esc(device.id) +
-                '">\u771f\u673a\u8c03\u8bd5</button>'
+                '" title="\u6253\u5f00\u771f\u673a\u8c03\u8bd5" aria-label="\u6253\u5f00 ' +
+                esc(device.name || '\u672a\u547d\u540d\u8bbe\u5907') +
+                ' \u7684\u771f\u673a\u8c03\u8bd5">\u8c03\u8bd5</button>'
               : '') +
-            '<button class="jld-skylab-btn" data-action="open-device-manager" data-device-id="' +
-            esc(device.id) +
-            '">\u7ba1\u7406</button></div></div>'
+            '</div>'
           );
         })
         .join('') +
@@ -3672,6 +3820,51 @@
     );
   }
 
+  function renderGroundStationPanel() {
+    const status = state.groundStationStatus || {};
+    const installed = !!status.installed;
+    return (
+      '<div class="jld-skylab-section jld-skylab-groundstation-hero"><div class="jld-skylab-groundstation-head">' +
+      railIcon('groundstation') +
+      '<div><span>地面站应用</span><strong>QGroundControl</strong></div><span class="jld-skylab-groundstation-state" data-running="' +
+      (status.running ? '1' : '0') +
+      '">' +
+      esc(status.running ? '运行中' : installed ? '已就绪' : '未安装') +
+      '</span></div><p>' +
+      esc(
+        state.groundStationLoading
+          ? '正在检测 QGroundControl...'
+          : status.message || '检测随 FleetDock IDEA 安装的 QGroundControl。'
+      ) +
+      '</p><div class="jld-skylab-groundstation-meta"><div><span>程序路径</span><strong title="' +
+      esc(status.executablePath || '') +
+      '">' +
+      esc(status.executablePath || '未找到') +
+      '</strong></div><div><span>版本</span><strong>' +
+      esc(status.version || '由外部安装提供') +
+      '</strong></div></div><div class="jld-skylab-groundstation-controls"><div class="jld-skylab-groundstation-main-actions"><button class="jld-skylab-btn" data-variant="primary" data-action="launch-groundstation" aria-label="启动 QGroundControl"' +
+      (!installed ||
+      status.running ||
+      state.groundStationLaunching ||
+      state.groundStationClosing
+        ? ' disabled aria-disabled="true"'
+        : '') +
+      '>' +
+      (state.groundStationLaunching ? '启动中...' : '启动') +
+      '</button><button class="jld-skylab-btn" data-action="close-groundstation" aria-label="关闭 QGroundControl"' +
+      (!status.running ||
+      state.groundStationLaunching ||
+      state.groundStationClosing
+        ? ' disabled aria-disabled="true"'
+        : '') +
+      '>' +
+      (state.groundStationClosing ? '关闭中...' : '关闭') +
+      '</button></div><div class="jld-skylab-groundstation-secondary-actions"><button class="jld-skylab-btn" data-action="select-groundstation-executable">选择程序</button><button class="jld-skylab-btn" data-action="open-groundstation-directory"' +
+      (!installed ? ' disabled aria-disabled="true"' : '') +
+      '>打开目录</button></div></div></div>'
+    );
+  }
+
   // [UAV-IDE MODIFY] Render read-only prerequisite checks with explicit repair suggestions.
   function renderSimulationEnvironmentCard() {
     const report = state.simulationEnvironment;
@@ -3815,6 +4008,30 @@
   }
 
   // [UAV-IDE MODIFY] Present scene maintenance as a list-first dialog with toolbar actions and inline name editing.
+  function renderSimulationPathField(label, field, placeholder) {
+    return (
+      '<div class="jld-skylab-field jld-skylab-path-field"><label for="jld-skylab-' +
+      esc(field) +
+      '">' +
+      esc(label) +
+      '</label><div class="jld-skylab-path-picker"><input id="jld-skylab-' +
+      esc(field) +
+      '" data-scope="simulation-config" data-field="' +
+      esc(field) +
+      '" value="' +
+      esc(state.simulationConfigDraft[field] || '') +
+      '" title="' +
+      esc(state.simulationConfigDraft[field] || '') +
+      '" placeholder="' +
+      esc(placeholder) +
+      '"><button type="button" data-action="browse-simulation-config-directory" data-config-field="' +
+      esc(field) +
+      '" title="\u9009\u62e9\u6587\u4ef6\u5939" aria-label="\u4e3a ' +
+      esc(label) +
+      ' \u9009\u62e9\u6587\u4ef6\u5939"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3l2 2h4v10.5a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18Z"></path><path d="M3.5 9.5h17"></path></svg></button></div></div>'
+    );
+  }
+
   function renderSceneManager() {
     if (!state.sceneManagerOpen) {
       return '';
@@ -3862,12 +4079,16 @@
       '<div class="jld-skylab-modal-backdrop" data-action="close-scene-manager"><div class="jld-skylab-modal" role="dialog" aria-modal="true">' +
       '<div class="jld-skylab-modal-head"><div><strong>\u4eff\u771f\u914d\u7f6e</strong><span>\u5168\u5c40 PX4 \u8def\u5f84\u548c Project AirSim \u573a\u666f\u5305\u914d\u7f6e</span></div><button class="jld-skylab-close" data-action="close-scene-manager" aria-label="\u5173\u95ed">&times;</button></div>' +
       '<div class="jld-skylab-modal-body">' +
-      '<label class="jld-skylab-field"><span>PX4 \u8def\u5f84</span><input data-scope="simulation-config" data-field="px4Path" value="' +
-      esc(state.simulationConfigDraft.px4Path || '') +
-      '" placeholder="IDE install dir\\\\lib\\\\PX4"></label>' +
-      '<label class="jld-skylab-field"><span>\u4eff\u771f\u573a\u666f\u4f9d\u8d56\u5305\u5b89\u88c5\u8def\u5f84</span><input data-scope="simulation-config" data-field="scenePackageDirectory" value="' +
-      esc(state.simulationConfigDraft.scenePackageDirectory || '') +
-      '" placeholder="IDE install dir\\\\lib\\\\SkyLabSim"></label>' +
+      renderSimulationPathField(
+        'PX4 \u8def\u5f84',
+        'px4Path',
+        'IDE install dir\\\\lib\\\\PX4'
+      ) +
+      renderSimulationPathField(
+        '\u4eff\u771f\u573a\u666f\u4f9d\u8d56\u5305\u5b89\u88c5\u8def\u5f84',
+        'scenePackageDirectory',
+        'IDE install dir\\\\lib\\\\SkyLabSim'
+      ) +
       '<div class="jld-skylab-scene-toolbar jld-skylab-scene-toolbar-right"><button class="jld-skylab-btn" data-variant="primary" data-action="save-simulation-config">\u4fdd\u5b58\u914d\u7f6e</button></div>' +
       '</div></div></div>'
     );
@@ -3951,6 +4172,9 @@
     if (state.activeTab === 'simulation') {
       return renderSimulationPanel();
     }
+    if (state.activeTab === 'groundstation') {
+      return renderGroundStationPanel();
+    }
     if (state.activeTab === 'publish') {
       return renderPublishPanel();
     }
@@ -3984,6 +4208,8 @@
         ? '设备'
         : state.activeTab === 'simulation'
         ? '仿真'
+        : state.activeTab === 'groundstation'
+        ? '地面站'
         : state.activeTab === 'publish'
         ? '发布'
         : '应用';
@@ -4004,7 +4230,10 @@
       renderRailButton('app', 'FleetDock 控制中心', railIcon('app')) +
       renderRailButton('devices', '设备', railIcon('devices')) +
       renderRailButton('simulation', '仿真', railIcon('simulation')) +
-      renderRailButton('publish', '发布', railIcon('publish')) +
+      renderRailButton('groundstation', '地面站', railIcon('groundstation')) +
+      (PUBLISH_UI_ENABLED
+        ? renderRailButton('publish', '发布', railIcon('publish'))
+        : '') +
       '</div>' +
       renderSimulationStopOverlay() +
       '<div class="jld-skylab-toast" data-open="' +
@@ -4238,6 +4467,22 @@
       api.showCodeAppCenterPublish?.();
       return;
     }
+    if (action === 'launch-groundstation') {
+      void launchGroundStation();
+      return;
+    }
+    if (action === 'close-groundstation') {
+      void closeGroundStation();
+      return;
+    }
+    if (action === 'select-groundstation-executable') {
+      void selectGroundStationExecutable();
+      return;
+    }
+    if (action === 'open-groundstation-directory') {
+      void openGroundStationInstallDirectory();
+      return;
+    }
     if (action === 'new-device') {
       api.openDeviceManager?.();
       return;
@@ -4269,7 +4514,7 @@
       return;
     }
     if (action === 'open-device-manager') {
-      api.openDeviceManager?.();
+      api.openDeviceManager?.(deviceId || undefined);
       return;
     }
     if (action === 'open-real-debugger') {
@@ -4293,6 +4538,12 @@
     }
     if (action === 'save-simulation-config') {
       void saveSimulationConfigInline();
+      return;
+    }
+    if (action === 'browse-simulation-config-directory') {
+      void browseSimulationConfigDirectory(
+        actionEl.getAttribute('data-config-field') || ''
+      );
       return;
     }
     if (action === 'open-scene-manager') {

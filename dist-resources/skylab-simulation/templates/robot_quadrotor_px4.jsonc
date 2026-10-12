@@ -200,6 +200,7 @@
   ],
   "controller": {
     "id": "PX4_Controller",
+    "airframe-setup": "quadrotor-x",
     "type": "px4-api",
     "px4-settings": {
       "lock-step": true,

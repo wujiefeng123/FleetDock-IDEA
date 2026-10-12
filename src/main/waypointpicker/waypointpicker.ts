@@ -14,7 +14,7 @@ const TIANDITU_JS_API_URL = `https://api.tianditu.gov.cn/api?v=4.0&tk=${TIANDITU
 const TIANDITU_SERVICE_JS_URL = 'https://api.tianditu.gov.cn/v4.0/service.js';
 const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-const DEFAULT_WAYPOINT = { lat: 39.9042, lon: 116.4074, alt: 100 };
+const DEFAULT_WAYPOINT = { lat: 39.9042, lon: 116.4074, alt: 20 };
 
 type WaypointDraft = { lat: string; lon: string; alt: string };
 
@@ -34,14 +34,14 @@ const TXT = {
   suggestEmpty: '\u672a\u627e\u5230\u76f8\u5173\u5730\u70b9',
   lat: '\u7eac\u5ea6',
   lon: '\u7ecf\u5ea6',
-  alt: '\u9ad8\u5ea6',
+  alt: '\u76f8\u5bf9 Home \u9ad8\u5ea6',
   reset: '\u91cd\u7f6e',
   retry: '\u91cd\u65b0\u52a0\u8f7d',
   cancel: '\u53d6\u6d88',
   confirm: '\u786e\u8ba4\u9009\u62e9',
   preview: '\u7eac\u5ea6 ',
   lonSep: '\uff0c\u7ecf\u5ea6 ',
-  altSep: '\uff0c\u9ad8\u5ea6 ',
+  altSep: '\uff0c\u76f8\u5bf9 Home \u9ad8\u5ea6 ',
   status:
     '\u5728\u5730\u56fe\u4e0a\u5355\u51fb\u9009\u62e9\u822a\u70b9\uff0c\u652f\u6301\u62d6\u52a8\u548c\u624b\u52a8\u5fae\u8c03\u3002',
   invalidCoords:

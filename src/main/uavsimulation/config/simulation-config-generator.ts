@@ -3,9 +3,16 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { DroneDevice, SimulationConfig } from '../../devices/types';
+import {
+  DroneDevice,
+  ManagedSensorDefinition,
+  SimulationConfig
+} from '../../devices/types';
 import { getUavAirframeProfile } from '../../devices/uav-airframes';
-import { createDefaultProjectAirsimSensors } from '../../devices/sensors/project-airsim-sensors';
+import {
+  createDefaultProjectAirsimSensors,
+  createProjectAirsimSensorPreset
+} from '../../devices/sensors/project-airsim-sensors';
 import { allocatePort } from '../../devices/port-allocator';
 import { getAppDir, getBundledPythonPath } from '../../utils';
 import {
@@ -136,12 +143,13 @@ export class SimulationConfigGenerator {
       index,
       vehicleName,
       systemId,
-      px4AutostartId: Number(
-        device.uav?.px4AutostartId || airframe.px4AutostartId
-      ),
-      projectAirsimAirframe:
-        device.uav?.projectAirsimAirframe || airframe.projectAirsimAirframe,
-      robotTemplate: device.uav?.robotTemplate || airframe.robotTemplate,
+      // [UAV-IDE MODIFY] airframeType is authoritative; ignore stale derived fields persisted by builds that mapped every type to the quadrotor template.
+      px4AutostartId: airframe.px4AutostartId,
+      px4ParameterOverrides: airframe.px4ParameterOverrides,
+      projectAirsimAirframe: airframe.projectAirsimAirframe,
+      robotTemplate: airframe.robotTemplate,
+      actuatorOrder: airframe.actuatorContract.order,
+      rotorCount: airframe.actuatorContract.rotorCount,
       px4Instance: runtimeOffset,
       simulatorPort: BASE_SIMULATOR_PORT + runtimeOffset,
       mavlinkPort,
@@ -152,10 +160,8 @@ export class SimulationConfigGenerator {
       controlPortLocal: BASE_CONTROL_PORT + runtimeOffset,
       robotFile: path.join(runDirectory, `robot-drone-${index + 1}.jsonc`),
       origin: {
-        // [UAV-IDE MODIFY] Spread multi-drone scenes in a grid so every generated actor is visible instead of overlapping along the camera axis.
-        xyz: `${(runtimeOffset % 3) * 8}.0 ${
-          Math.floor(runtimeOffset / 3) * 8
-        }.0 -4.0`,
+        // [UAV-IDE MODIFY] Scene placement follows selected-run order, not a persistent number such as Drone7 that can land inside map geometry.
+        xyz: `${(index % 3) * 8}.0 ${Math.floor(index / 3) * 8}.0 -4.0`,
         rpy: '0 0 0'
       }
     };
@@ -227,9 +233,8 @@ export class SimulationConfigGenerator {
     scenePackageDirectory: string
   ): string {
     // [UAV-IDE MODIFY] Use the selected PX4/Project AirSim UAV profile and inject per-drone runtime values.
-    const templatePath = path.join(
+    const templatePath = this._resolveRobotTemplatePath(
       scenePackageDirectory,
-      'templates',
       drone.robotTemplate || 'robot_quadrotor_px4.jsonc'
     );
     let robotJson = fs.readFileSync(templatePath, 'utf8');
@@ -254,11 +259,113 @@ export class SimulationConfigGenerator {
     // [UAV-IDE MODIFY] Materialize each device's sensor inventory into its isolated per-run robot config.
     robotJson = injectProjectAirsimSensors(
       robotJson,
-      Array.isArray(drone.device.sensors)
-        ? drone.device.sensors
-        : createDefaultProjectAirsimSensors()
+      this._projectAirsimSensors(drone)
     );
+    this._validateRobotContract(robotJson, drone);
     return robotJson;
+  }
+
+  private _projectAirsimSensors(
+    drone: UavSimulationGeneratedDrone
+  ): ManagedSensorDefinition[] {
+    const sensors = [
+      ...(Array.isArray(drone.device.sensors)
+        ? drone.device.sensors
+        : createDefaultProjectAirsimSensors())
+    ];
+    const requiresAirspeed =
+      drone.projectAirsimAirframe === 'vtol-quad-x-tailsitter' ||
+      drone.projectAirsimAirframe === 'vtol-quad-tiltrotor';
+    if (
+      requiresAirspeed &&
+      !sensors.some(sensor => sensor.type === 'airspeed')
+    ) {
+      // [UAV-IDE MODIFY] PX4 VTOL preflight requires valid airspeed data even when an older persisted device inventory predates this flight sensor.
+      const airspeed = createProjectAirsimSensorPreset('airspeed', 'Airspeed');
+      airspeed.name = '飞控空速计';
+      sensors.push(airspeed);
+    }
+    return sensors;
+  }
+
+  private _resolveRobotTemplatePath(
+    scenePackageDirectory: string,
+    templateName: string
+  ): string {
+    // [UAV-IDE MODIFY] Product-owned templates ship separately from large scene packages so a stale local SkyLabSim extraction cannot restore quadrotor mappings for every airframe.
+    const appDirectories: string[] = [];
+    try {
+      appDirectories.push(getAppDir());
+    } catch (_error) {
+      // [UAV-IDE MODIFY] Contract tests use a minimal Electron stub; cwd still resolves development resources.
+    }
+    const candidates = [
+      ...appDirectories.flatMap(appDirectory => [
+        path.join(
+          appDirectory,
+          'dist-resources',
+          'skylab-simulation',
+          'templates',
+          templateName
+        ),
+        path.join(appDirectory, 'skylab-simulation', 'templates', templateName)
+      ]),
+      path.join(
+        process.cwd(),
+        'dist-resources',
+        'skylab-simulation',
+        'templates',
+        templateName
+      ),
+      path.join(scenePackageDirectory, 'templates', templateName)
+    ];
+    const templatePath = candidates.find(candidate => fs.existsSync(candidate));
+    if (!templatePath) {
+      throw new Error(
+        `Project AirSim 机器人模板不存在：${templateName}。请修复 FleetDock IDEA 安装资源。`
+      );
+    }
+    return templatePath;
+  }
+
+  private _validateRobotContract(
+    robotJson: string,
+    drone: UavSimulationGeneratedDrone
+  ): void {
+    const unresolvedTokens = robotJson.match(/"__[A-Z0-9_]+__"/g) || [];
+    if (unresolvedTokens.length) {
+      throw new Error(
+        `Project AirSim 机器人模板 ${
+          drone.robotTemplate
+        } 包含未替换变量：${unresolvedTokens.join(', ')}。`
+      );
+    }
+    const actuatorNames = new Set(
+      Array.from(robotJson.matchAll(/"name"\s*:\s*"([^"]+_actuator)"/g)).map(
+        match => match[1]
+      )
+    );
+    const order = Array.from(
+      robotJson.matchAll(/"id"\s*:\s*"([^"]+_actuator)"/g)
+    )
+      .map(match => match[1])
+      .filter(id => actuatorNames.has(id));
+    const expected = Array.from(drone.actuatorOrder);
+    if (
+      order.length !== expected.length ||
+      order.some((id, index) => id !== expected[index])
+    ) {
+      throw new Error(
+        `Project AirSim 机器人模板 ${drone.robotTemplate} 的执行器顺序与 ${drone.projectAirsimAirframe} 契约不一致。`
+      );
+    }
+    const rotorCount = Array.from(robotJson.matchAll(/"type"\s*:\s*"rotor"/g))
+      .length;
+    if (rotorCount !== drone.rotorCount) {
+      throw new Error(
+        `Project AirSim 机器人模板 ${drone.robotTemplate} 应包含 ${drone.rotorCount} 个旋翼，实际为 ${rotorCount} 个。`
+      );
+    }
   }
 
   private _launchJson(plan: UavSimulationLaunchPlan): object {
@@ -274,7 +381,9 @@ export class SimulationConfigGenerator {
         vehicleName: drone.vehicleName,
         systemId: drone.systemId,
         px4AutostartId: drone.px4AutostartId,
+        px4ParameterOverrides: drone.px4ParameterOverrides,
         projectAirsimAirframe: drone.projectAirsimAirframe,
+        actuatorOrder: drone.actuatorOrder,
         px4Instance: drone.px4Instance,
         simulatorPort: drone.simulatorPort,
         mavlinkPort: drone.mavlinkPort,
@@ -329,10 +438,15 @@ export class SimulationConfigGenerator {
   }
 
   private _resolveRuntimePythonRoot(): string {
-    const appDir = getAppDir();
+    let appDirectory = process.cwd();
+    try {
+      appDirectory = getAppDir();
+    } catch (_error) {
+      // [UAV-IDE MODIFY] Keep configuration generation testable without a complete Electron application object.
+    }
     const candidates = [
-      path.join(appDir, 'dist-resources', 'skylab-runtime'),
-      path.join(appDir, 'skylab-runtime'),
+      path.join(appDirectory, 'dist-resources', 'skylab-runtime'),
+      path.join(appDirectory, 'skylab-runtime'),
       path.join(process.cwd(), 'dist-resources', 'skylab-runtime')
     ];
     return (

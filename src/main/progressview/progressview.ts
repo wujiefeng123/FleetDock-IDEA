@@ -45,10 +45,13 @@ export class ProgressView {
           display: flex;
           flex-direction: row;
           align-items: center;
+          /* [UAV-IDE MODIFY] Raise the larger FleetDock transition artwork without shifting its status text. */
+          transform: translateY(-24px);
         }
         .progress-logo svg {
-          width: 200px;
-          height: 200px;
+          width: min(260px, 70vw);
+          height: auto;
+          max-height: 45vh;
         }
         .progress-message-row {
           width: 100%;
@@ -103,8 +106,18 @@ export class ProgressView {
         }
       }
 
-      window.electronAPI.onShowProgress((title, detail, showAnimation) => {
+      window.electronAPI.onShowProgress((title, detail, showAnimation, renderRequestId) => {
         showProgress(title, detail, showAnimation);
+
+        // [UAV-IDE MODIFY] Confirm two animation frames before main-process
+        // preparation starts so the transition is visibly painted first.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              window.electronAPI.notifyProgressViewPainted(renderRequestId);
+            }, 0);
+          });
+        });
       });
 
       window.electronAPI.onInstallBundledPythonEnvStatus((status, detail) => {
@@ -150,20 +163,24 @@ export class ProgressView {
     this._view.loadViewContent(this._pageBody);
   }
 
-  setProgress(title: string, detail: string, showAnimation: boolean) {
+  setProgress(title: string, detail: string, showAnimation: boolean): number {
+    const renderRequestId = ++this._renderRequestId;
     this._viewReady.then(() => {
       this._view.view.webContents.send(
         EventTypeRenderer.ShowProgress,
         title,
         detail,
-        showAnimation
+        showAnimation,
+        renderRequestId
       );
     });
+    return renderRequestId;
   }
 
   private _view: ThemedView;
   private _viewReady: Promise<void>;
   private _pageBody: string;
+  private _renderRequestId = 0;
 }
 
 export namespace ProgressView {
