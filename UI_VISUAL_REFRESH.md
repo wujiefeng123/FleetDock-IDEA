@@ -118,3 +118,12 @@ senders and malformed payloads, observer/controller cleanup, and the original
 close-button IPC. Unit tests passed (525 tests). This checks the same renderer
 theme attributes used by JupyterLab without starting a Python server or changing
 user settings. Restart the desktop application to load the updated preload.
+
+The native BrowserWindow background is also synchronized with the titlebar
+palette. The upstream non-macOS titlebar inset exposes a one-pixel strip of this
+background, so leaving it at the startup color produces a light edge after
+switching a light desktop session to a dark Lab theme. The inset and window
+resizing geometry are retained.
+An isolated real application session verified maximized dark/light/dark
+switching and the native background color. A transparent root-renderer fixture
+confirmed that the exposed backing surface follows the same palette.

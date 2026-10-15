@@ -37,8 +37,9 @@ class FleetDockSessionExtension implements ISessionExtension {
     this._themeController = new FleetDockThemeController(
       this._context.eventManager,
       this._context.getLabWebContents,
-      dark => this._titleBarInjector.setDarkTheme(dark)
+      dark => this._setChromeTheme(dark)
     );
+    this._setChromeTheme(this._context.isDarkTheme);
     this._context.window.setTitle(PRODUCT_NAME);
     this._hudWindowController = new FleetDockHudWindowController({
       owner: this._context.window,
@@ -141,7 +142,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   }
 
   onWelcomeViewCreated(webContents: Electron.WebContents): Promise<void> {
-    this._titleBarInjector.setDarkTheme(this._context.isDarkTheme);
+    this._setChromeTheme(this._context.isDarkTheme);
     return this._welcomeInjector.attach(webContents);
   }
 
@@ -185,6 +186,14 @@ class FleetDockSessionExtension implements ISessionExtension {
     this._welcomeInjector.dispose();
     await this._labInjector.dispose();
     await this._simulationController.dispose();
+  }
+
+  private _setChromeTheme(dark: boolean): void {
+    // [UAV-IDE MODIFY] The upstream one-pixel titlebar inset exposes the native window background.
+    if (!this._context.window.isDestroyed()) {
+      this._context.window.setBackgroundColor(dark ? '#181818' : '#f3f3f3');
+    }
+    this._titleBarInjector.setDarkTheme(dark);
   }
 
   private _workingDirectory(): string {
