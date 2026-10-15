@@ -47,29 +47,12 @@
     const brandText = element('div', 'fleetdock-welcome-brand-text');
     brandText.append(
       element('div', 'fleetdock-welcome-brand-name', 'FleetDock IDEA'),
-      element(
-        'div',
-        'fleetdock-welcome-brand-subtitle',
-        'Student UAV Development Workspace'
-      )
+      element('div', 'fleetdock-welcome-brand-subtitle', '无人机应用开发环境')
     );
     brand.append(brandLogo, brandText);
     header.appendChild(brand);
 
     const content = element('main', 'fleetdock-welcome-content');
-    const hero = element('section', 'fleetdock-welcome-hero');
-    const heroText = element('div', 'fleetdock-welcome-hero-copy');
-    heroText.append(
-      element('h1', 'fleetdock-welcome-hero-title', 'FleetDock IDEA 工作台')
-    );
-    const heroMark = element('div', 'fleetdock-welcome-hero-mark');
-    heroMark.setAttribute('aria-hidden', 'true');
-    heroMark.append(
-      element('span', 'fleetdock-welcome-flight-path'),
-      element('span', 'fleetdock-welcome-aircraft', '◆')
-    );
-    hero.append(heroText, heroMark);
-
     const toolbar = element('section', 'fleetdock-welcome-toolbar');
     const searchBox = element('label', 'fleetdock-welcome-search');
     const searchIcon = element('span', 'fleetdock-welcome-search-icon', '⌕');
@@ -114,7 +97,7 @@
       list.appendChild(expander);
     }
 
-    content.append(hero, toolbar, sectionHeading, list);
+    content.append(toolbar, sectionHeading, list);
     root.append(header, content);
     container.insertAdjacentElement('beforebegin', root);
 

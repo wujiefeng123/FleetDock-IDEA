@@ -1,6 +1,6 @@
 /* [UAV-IDE MODIFY] FleetDock welcome shell stays in an isolated asset so the
  * upstream WelcomeView markup remains replaceable during future upgrades.
- * The visual refresh preserves the existing layout and action contracts. */
+ * Keep branding compact so existing application actions remain prominent. */
 html,
 body {
   width: 100%;
@@ -124,84 +124,10 @@ body.app-ui-dark {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 20px;
   padding: 28px 32px 30px;
   overflow: hidden;
-}
-
-.fleetdock-welcome-hero {
-  position: relative;
-  display: flex;
-  min-height: 128px;
-  align-items: center;
-  justify-content: space-between;
-  overflow: hidden;
-  padding: 26px 28px;
-  border: 1px solid var(--fd-ui-border);
-  border-radius: 3px;
-  background: var(--fd-ui-surface-alt);
-}
-
-.app-ui-dark .fleetdock-welcome-hero {
-  border-color: var(--fd-ui-border);
-  background: var(--fd-ui-surface-alt);
-}
-
-.fleetdock-welcome-hero::after {
-  position: absolute;
-  top: 18px;
-  right: 34px;
-  width: 220px;
-  height: 72px;
-  transform: rotate(-11deg);
-  border-top: 2px solid var(--fd-ui-border);
-  border-radius: 50%;
-  content: '';
-}
-
-.fleetdock-welcome-hero-title {
-  margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 500;
-}
-
-.fleetdock-welcome-hero-text {
-  margin: 0;
-  color: var(--fd-ui-muted);
-  font-size: 14px;
-}
-
-.app-ui-dark .fleetdock-welcome-hero-text {
-  color: var(--fd-ui-muted);
-}
-
-.fleetdock-welcome-hero-mark {
-  position: relative;
-  width: 108px;
-  height: 78px;
-  flex: 0 0 108px;
-  color: var(--fd-ui-accent);
-}
-
-.fleetdock-welcome-flight-path {
-  position: absolute;
-  inset: 14px 6px 8px;
-  transform: rotate(-12deg);
-  border: 2px dashed var(--fd-ui-border);
-  border-left-color: transparent;
-  border-radius: 50%;
-}
-
-.fleetdock-welcome-aircraft {
-  position: absolute;
-  top: 17px;
-  right: 10px;
-  z-index: 1;
-  transform: rotate(32deg);
-  color: var(--fd-ui-accent);
-  font-size: 28px;
-  text-shadow: none;
 }
 
 .fleetdock-welcome-toolbar {
@@ -563,11 +489,6 @@ body > #notification-panel {
     padding: 18px 24px 20px;
   }
 
-  .fleetdock-welcome-hero {
-    min-height: 100px;
-    padding: 18px 22px;
-  }
-
   .fleetdock-welcome-list .recent-session-row {
     min-height: 82px;
     padding: 12px 14px;
@@ -582,10 +503,6 @@ body > #notification-panel {
   .fleetdock-welcome-content {
     padding-right: 20px;
     padding-left: 20px;
-  }
-
-  .fleetdock-welcome-hero-mark {
-    display: none;
   }
 
   .fleetdock-welcome-toolbar {
@@ -633,11 +550,6 @@ body,
 
 .fleetdock-welcome-search:focus-within {
   border-color: var(--fd-ui-accent);
-}
-
-.fleetdock-welcome-hero::after,
-.fleetdock-welcome-flight-path {
-  opacity: 0.2;
 }
 
 .fleetdock-welcome-avatar {
