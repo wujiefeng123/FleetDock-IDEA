@@ -14,7 +14,8 @@ body:has(.jlab-dialog-body) > .page-container {
   background: var(--fd-ui-bg) !important;
 }
 
-.jlab-dialog-body :is(.shell, .panel, .footer, .header, .body, .sidebar, .tools) {
+.jlab-dialog-body
+  :is(.shell, .panel, .footer, .header, .body, .sidebar, .tools) {
   border-color: var(--fd-ui-border) !important;
   color: var(--fd-ui-text) !important;
   background: var(--fd-ui-bg) !important;
