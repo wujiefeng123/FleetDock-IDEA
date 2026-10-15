@@ -1371,11 +1371,13 @@ export class SessionWindow implements IDisposable {
   }
 
   // Title bar bounds, shared by load() and _resizeViews() so the first paint
-  // matches every later resize. Non-macOS insets by 1px so the frame stays
-  // grabbable for resizing around the title bar.
+  // matches every later resize. Restored non-macOS windows inset by 1px so
+  // the frame stays grabbable for resizing around the title bar.
   private _titleBarBounds(): Electron.Rectangle {
     const { width } = this._window.getContentBounds();
-    const padding = process.platform === 'darwin' ? 0 : 1;
+    // [UAV-IDE MODIFY] Maximized chrome must cover the client edge; resize hit areas are only needed when restored.
+    const padding =
+      process.platform === 'darwin' || this._window.isMaximized() ? 0 : 1;
     return {
       x: padding,
       y: padding,

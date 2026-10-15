@@ -127,3 +127,17 @@ resizing geometry are retained.
 An isolated real application session verified maximized dark/light/dark
 switching and the native background color. A transparent root-renderer fixture
 confirmed that the exposed backing surface follows the same palette.
+
+## Maximized titlebar edge follow-up
+
+The background-only change did not resolve the reported border on the user's
+window. Maximized non-macOS windows now use a zero titlebar inset, covering the
+top and side client edges directly. Restored windows retain the original
+one-pixel inset for edge resizing. This small generic geometry correction is
+marked in `SessionWindow`; no native frame flags or system settings are changed.
+
+Build and 527 unit tests passed, including maximized/restored bounds on Windows
+and Linux. Native capture of an isolated application is used to inspect the
+composited window, since root WebContents captures do not include child views or
+native window decorations. The user's original white line could not be reproduced
+in that isolated session, so confirmation on the affected desktop remains pending.

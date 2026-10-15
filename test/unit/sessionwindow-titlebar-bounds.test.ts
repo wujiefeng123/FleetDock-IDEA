@@ -9,9 +9,12 @@ function setPlatform(p: string): void {
   Object.defineProperty(process, 'platform', { value: p, configurable: true });
 }
 
-function windowWith(width: number): any {
+function windowWith(width: number, maximized = false): any {
   const win = Object.create(SessionWindow.prototype);
-  win._window = { getContentBounds: () => ({ width, height: 600 }) };
+  win._window = {
+    getContentBounds: () => ({ width, height: 600 }),
+    isMaximized: () => maximized
+  };
   return win;
 }
 
@@ -37,4 +40,23 @@ describe('SessionWindow._titleBarBounds', () => {
       height: 28
     });
   });
+
+  it.each(['win32', 'linux'])(
+    'covers the full client edge when maximized on %s',
+    platform => {
+      setPlatform(platform);
+      expect(windowWith(1920, true)._titleBarBounds()).toEqual({
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 29
+      });
+      expect(windowWith(800, false)._titleBarBounds()).toEqual({
+        x: 1,
+        y: 1,
+        width: 798,
+        height: 28
+      });
+    }
+  );
 });
