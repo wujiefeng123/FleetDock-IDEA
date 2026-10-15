@@ -2437,7 +2437,8 @@
   height: 18px;
   border: 2px solid var(--fd-ui-border);
   border-top-color: var(--jld-sky-blue);
-  border-radius: 3px;
+  /* [UAV-IDE MODIFY] Match the circular simulation loader while retaining the compact indicator size. */
+  border-radius: 50%;
   animation: jld-skylab-spin 800ms linear infinite;
 }
 
