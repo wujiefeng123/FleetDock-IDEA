@@ -1713,14 +1713,17 @@ export class SessionWindow implements IDisposable {
     this._updateSessionWindowPositionConfig();
     this._sessionConfigChanged.emit();
 
-    if (filesToOpen) {
-      this.labView.labUIReady.then(() => {
-        this.labView.openFiles();
-        this._hideProgressView();
-      });
-    } else {
+    // [UAV-IDE MODIFY] Opening a folder also needs the final web theme before removing the transition view.
+    const openingLabView = this.labView;
+    openingLabView.labUIReady.then(() => {
+      if (this._labView !== openingLabView) {
+        return;
+      }
+      if (filesToOpen) {
+        openingLabView.openFiles();
+      }
       this._hideProgressView();
-    }
+    });
 
     appData.addSessionToRecents({
       workingDirectory: sessionConfig.resolvedWorkingDirectory,

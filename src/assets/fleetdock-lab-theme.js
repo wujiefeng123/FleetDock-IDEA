@@ -5,6 +5,9 @@
   }
   let previous;
   const syncTheme = () => {
+    if (document.body.dataset.jupyterlabDesktopThemeReady !== 'true') {
+      return;
+    }
     const { jpThemeLight, jpThemeName } = document.body.dataset;
     if (jpThemeLight === undefined && !jpThemeName) {
       return;
@@ -21,7 +24,11 @@
   const observer = new MutationObserver(syncTheme);
   observer.observe(document.body, {
     attributes: true,
-    attributeFilter: ['data-jp-theme-light', 'data-jp-theme-name']
+    attributeFilter: [
+      'data-jp-theme-light',
+      'data-jp-theme-name',
+      'data-jupyterlab-desktop-theme-ready'
+    ]
   });
   window.__fleetDockLabThemeObserver = observer;
   window.addEventListener(

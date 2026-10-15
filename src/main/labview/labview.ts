@@ -68,20 +68,12 @@ export class LabView implements IDisposable {
     this._view.setBackgroundColor(
       options.isDarkTheme ? DarkThemeBGColor : LightThemeBGColor
     );
+    // [UAV-IDE MODIFY] Keep the persisted web theme out of the first visible frame until desktop synchronization finishes.
+    this._view.setVisible(false);
 
     this._registerBrowserEventHandlers();
     this._registerNavigationGuard();
     this._addFallbackContextMenu();
-
-    if (!this._sessionConfig.isRemote) {
-      this._evm.registerEventHandler(EventTypeMain.LabUIReady, event => {
-        if (event.sender !== this._view.webContents) {
-          return;
-        }
-
-        this._labUIReady = true;
-      });
-    }
 
     const ctrlWBehavior = userSettings.getValue(SettingType.ctrlWBehavior);
 
@@ -448,14 +440,15 @@ export class LabView implements IDisposable {
       }
     );
 
-    if (this._wsSettings.getValue(SettingType.syncJupyterLabTheme)) {
-      this._evm.registerEventHandler(EventTypeMain.LabUIReady, event => {
-        if (event.sender !== this._view.webContents) {
-          return;
-        }
-        this._setJupyterLabTheme(this._wsSettings.getValue(SettingType.theme));
-      });
-    }
+    // [UAV-IDE MODIFY] UI readiness includes the initial theme, not just JupyterLab restoration.
+    this._evm.registerEventHandler(EventTypeMain.LabUIReady, event => {
+      if (
+        event.sender === this._view.webContents &&
+        !this._themeInitialization
+      ) {
+        this._themeInitialization = this._prepareInitialTheme();
+      }
+    });
 
     this._evm.registerEventHandler(
       EventTypeMain.SetTheme,
@@ -475,22 +468,105 @@ export class LabView implements IDisposable {
       : 'JupyterLab Light';
 
     await this._view.webContents.executeJavaScript(`
-      {
+      (async () => {
         const lab = window.jupyterapp || window.jupyterlab;
         if (lab) {
           const existingTheme = document.body.dataset?.jpThemeName;
           const newTheme = '${themeName}';
           if (existingTheme !== newTheme) {
-            lab.commands.execute('apputils:change-theme', { theme: newTheme });
+            await lab.commands.execute('apputils:change-theme', { theme: newTheme });
           }
+          // [UAV-IDE MODIFY] The command may resolve after saving settings but before asynchronous theme loading updates the body.
+          await new Promise((resolve, reject) => {
+            const matches = () => document.body.dataset.jpThemeName === newTheme &&
+              document.body.dataset.jpThemeLight === '${
+                themeName === 'JupyterLab Light'
+              }';
+            if (matches()) {
+              resolve();
+              return;
+            }
+            const observer = new MutationObserver(() => {
+              if (matches()) {
+                observer.disconnect();
+                clearTimeout(timeout);
+                resolve();
+              }
+            });
+            const timeout = setTimeout(() => {
+              observer.disconnect();
+              reject(new Error('JupyterLab theme did not finish loading within 10 seconds.'));
+            }, 10000);
+            observer.observe(document.body, {
+              attributes: true,
+              attributeFilter: ['data-jp-theme-name', 'data-jp-theme-light']
+            });
+          });
         }
-      }
-      0; // response
+      })();
     `);
+  }
+
+  private async _prepareInitialTheme(): Promise<void> {
+    const generation = this._themeGeneration;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (this._wsSettings.getValue(SettingType.syncJupyterLabTheme)) {
+        await Promise.race([
+          this._setJupyterLabTheme(
+            this._wsSettings.getValue(SettingType.theme)
+          ),
+          new Promise<void>((_resolve, reject) => {
+            timeout = setTimeout(
+              () =>
+                reject(new Error('Initial theme synchronization timed out.')),
+              10000
+            );
+          })
+        ]);
+      }
+    } catch (error) {
+      log.warn(
+        'Initial JupyterLab theme synchronization failed; keeping the web theme.',
+        error
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (
+      this._isDisposed ||
+      generation !== this._themeGeneration ||
+      this._view.webContents.isDestroyed()
+    ) {
+      return;
+    }
+    try {
+      // [UAV-IDE MODIFY] Optional chrome observers must ignore intermediate startup theme attributes.
+      await this._view.webContents.executeJavaScript(
+        "document.body.setAttribute('data-jupyterlab-desktop-theme-ready', 'true');"
+      );
+    } catch (error) {
+      log.warn(
+        'JupyterLab theme readiness could not be published; reopen the session to retry.',
+        error
+      );
+    }
+    if (
+      !this._isDisposed &&
+      generation === this._themeGeneration &&
+      !this._view.webContents.isDestroyed()
+    ) {
+      this._view.setVisible(true);
+      this._labUIReady = true;
+    }
   }
 
   private _registerWebAppFrontEndHandlers() {
     this._view.webContents.on('dom-ready', () => {
+      this._themeGeneration++;
+      this._themeInitialization = undefined;
+      this._labUIReady = false;
+      this._view.setVisible(false);
       const setToSingleFileUIMode = this.shouldSetToSingleFileUIMode();
 
       this._view.webContents.executeJavaScript(`
@@ -609,6 +685,8 @@ export class LabView implements IDisposable {
   private _jlabBaseUrl: string;
   private _wsSettings: WorkspaceSettings;
   private _labUIReady = false;
+  private _themeInitialization?: Promise<void>;
+  private _themeGeneration = 0;
   private _isDisposed = false;
   private _evm = new EventManager();
   private _uiMode: UIMode = UIMode.ManagedByWebApp;

@@ -141,3 +141,27 @@ and Linux. Native capture of an isolated application is used to inspect the
 composited window, since root WebContents captures do not include child views or
 native window decorations. The user's original white line could not be reproduced
 in that isolated session, so confirmation on the affected desktop remains pending.
+
+## Initial workspace theme ordering
+
+LabView previously reported readiness while desktop theme synchronization was
+still pending. JupyterLab's theme command can resolve after saving its setting,
+before the asynchronous theme load updates the body's theme attributes. This
+allowed a persisted dark web theme to appear before a light desktop theme.
+
+The view now remains hidden during initialization. Readiness waits for the theme
+command and the target theme attributes; the attribute observer is cleaned up on
+completion or a ten-second timeout. Failure logs a warning and reveals the web
+theme instead of blocking the workspace. Disabled synchronization preserves the
+saved web theme. Disposal/navigation guards prevent stale initialization from
+revealing a different document. Folder opens keep their transition until this
+readiness point, and FleetDock titlebar observers ignore intermediate themes.
+
+The build, scoped lint/format checks, and 535 unit tests passed. An isolated real
+Electron/JupyterLab session seeded with a dark saved theme and a light desktop
+theme showed only the final light theme when LabView became visible. Tests use
+temporary settings/workspaces; existing user preferences are not edited.
+The opposite mismatch (saved light, desktop dark) also revealed only the final
+dark theme. Disabling synchronization retained the saved dark theme despite a
+light desktop preference. A stalled theme command has a ten-second startup limit
+and falls back to revealing the web theme.
