@@ -2000,8 +2000,9 @@
 .jld-skylab-spinner {
   width: 30px;
   height: 30px;
-  border-radius: 3px;
-  border: 4px solid var(--fd-ui-border);
+  /* [UAV-IDE MODIFY] Keep the loading indicator circular despite compact card corners. */
+  border-radius: 50%;
+  border: 3px solid var(--fd-ui-border);
   border-top-color: var(--fd-ui-accent);
 }
 
