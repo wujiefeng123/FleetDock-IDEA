@@ -4203,24 +4203,10 @@
         : null;
     root.setAttribute('data-open', state.open ? '1' : '0');
     root.setAttribute('aria-busy', state.stoppingSimulation ? 'true' : 'false');
-    const title =
-      state.activeTab === 'devices'
-        ? '设备'
-        : state.activeTab === 'simulation'
-        ? '仿真'
-        : state.activeTab === 'groundstation'
-        ? '地面站'
-        : state.activeTab === 'publish'
-        ? '发布'
-        : '应用';
     root.innerHTML =
       renderHudDrawer() +
       '<div class="jld-skylab-drawer"><div class="jld-skylab-shell">' +
-      '<div class="jld-skylab-header"><div><div class="jld-skylab-title">FleetDock 控制中心</div><div class="jld-skylab-subtitle">' +
-      esc(title) +
-      ' 路 ' +
-      esc(state.context?.name || '当前工作区') +
-      '</div></div><button class="jld-skylab-close" data-action="close-center" aria-label="关闭">&times;</button></div>' +
+      '<div class="jld-skylab-header"><div><div class="jld-skylab-title">FleetDock 控制中心</div></div><button class="jld-skylab-close" data-action="close-center" aria-label="关闭">&times;</button></div>' +
       '<div class="jld-skylab-tabs">' +
       renderTabs() +
       '</div><div class="jld-skylab-body">' +

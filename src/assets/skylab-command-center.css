@@ -1067,15 +1067,6 @@
   color: var(--jld-sky-text);
 }
 
-.jld-skylab-subtitle {
-  color: var(--jld-sky-muted);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 238px;
-}
-
 .jld-skylab-close,
 .jld-skylab-btn {
   border: 1px solid var(--jld-sky-border);
