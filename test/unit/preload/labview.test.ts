@@ -13,12 +13,23 @@ describe('labview preload', () => {
     vi.resetModules();
   });
 
+  it('forwards the titlebar theme through the scoped FleetDock channel', async () => {
+    const api = await load();
+    const { ipcRenderer: fleetDockIpc } = await import('electron');
+    api.syncFleetDockTitleBarTheme(true);
+    expect(fleetDockIpc.send).toHaveBeenCalledWith(
+      'fleetdock:sync-titlebar-theme',
+      true
+    );
+  });
+
   it('exposes exactly the documented electronAPI keys', async () => {
     const api = await load();
     expect(Object.keys(api).sort()).toEqual(
       [
         'getServerInfo',
         'broadcastLabUIReady',
+        'syncFleetDockTitleBarTheme',
         // [UAV-IDE MODIFY] Explicit FleetDock renderer capability allowlist.
         'showApplicationSettings',
         'showCodeAppCenterPublish',

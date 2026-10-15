@@ -103,3 +103,18 @@ The isolated dark workspace also reported a startup `removeChild` renderer
 exception. The same exception was reproduced on the preserved baseline; file
 loading and notebook opening still completed. Its source is not established by
 this appearance task and should be investigated separately.
+
+## Titlebar theme synchronization on 2026-10-15
+
+JupyterLab can change its theme independently of the desktop's startup theme.
+An isolated Lab observer now reports only theme-attribute changes through
+`fleetdock:sync-titlebar-theme`. The session accepts boolean payloads only from
+its current Lab WebContents and updates its own titlebar. Welcome views restore
+the desktop theme; no persistent theme preference is overwritten.
+
+The actual bundled preload was verified in Electron for initial dark rendering,
+live light/dark switching, duplicate observer injection, rejection of foreign
+senders and malformed payloads, observer/controller cleanup, and the original
+close-button IPC. Unit tests passed (525 tests). This checks the same renderer
+theme attributes used by JupyterLab without starting a Python server or changing
+user settings. Restart the desktop application to load the updated preload.

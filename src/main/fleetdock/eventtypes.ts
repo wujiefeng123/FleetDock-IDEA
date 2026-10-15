@@ -7,6 +7,7 @@ import { EventTypeMain as UpstreamEventTypeMain } from '../eventtypes';
 // registry so upstream updates can replace that registry without remerging
 // product-specific entries.
 export enum FleetDockEventTypeMain {
+  SyncTitleBarTheme = 'fleetdock:sync-titlebar-theme',
   CreateNewApplication = 'create-new-application',
   ShowApplicationSettings = 'show-application-settings',
   SaveApplicationSettings = 'save-application-settings',

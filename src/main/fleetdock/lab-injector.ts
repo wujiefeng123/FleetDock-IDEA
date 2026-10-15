@@ -42,6 +42,10 @@ export class FleetDockLabInjector {
           true
         );
         await webContents.executeJavaScript(
+          this._readAsset('fleetdock-lab-theme.js'),
+          true
+        );
+        await webContents.executeJavaScript(
           this._readAsset('skylab-command-center.js'),
           true
         );

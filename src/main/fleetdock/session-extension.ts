@@ -23,6 +23,7 @@ import { PRODUCT_NAME } from '../branding';
 import type { JupyterServer } from '../server';
 import { SettingType } from '../config/settings';
 import { QgcController } from '../groundstation/qgc-controller';
+import { FleetDockThemeController } from './theme-controller';
 
 /**
  * FleetDock features are attached here as migration layers are enabled.
@@ -33,6 +34,11 @@ class FleetDockSessionExtension implements ISessionExtension {
   readonly id = 'fleetdock';
 
   constructor(private _context: ISessionExtensionContext) {
+    this._themeController = new FleetDockThemeController(
+      this._context.eventManager,
+      this._context.getLabWebContents,
+      dark => this._titleBarInjector.setDarkTheme(dark)
+    );
     this._context.window.setTitle(PRODUCT_NAME);
     this._hudWindowController = new FleetDockHudWindowController({
       owner: this._context.window,
@@ -107,6 +113,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   }
 
   activate(): void {
+    this._themeController.register();
     this._dialogController.register();
     this._codeAppCenterController.register();
     this._deviceManagerController.register();
@@ -134,6 +141,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   }
 
   onWelcomeViewCreated(webContents: Electron.WebContents): Promise<void> {
+    this._titleBarInjector.setDarkTheme(this._context.isDarkTheme);
     return this._welcomeInjector.attach(webContents);
   }
 
@@ -169,6 +177,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   }
 
   async dispose(): Promise<void> {
+    this._themeController.dispose();
     this._dialogController.dispose();
     this._deviceManagerController.dispose();
     this._hudWindowController.dispose();
@@ -188,6 +197,7 @@ class FleetDockSessionExtension implements ISessionExtension {
   }
 
   private _codeAppCenterSettings = new CodeAppCenterSettings();
+  private _themeController: FleetDockThemeController;
   private _dialogController: SessionDialogController;
   private _codeAppCenterController: CodeAppCenterController;
   private _deviceManagerController: DeviceManagerController;

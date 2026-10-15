@@ -5,9 +5,24 @@ import type { WebContents } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { readFleetDockCss } from './styles';
+import log from 'electron-log';
 
 // [UAV-IDE MODIFY] Keep FleetDock desktop chrome outside the upstream titlebar document.
 export class FleetDockTitleBarInjector {
+  setDarkTheme(dark: boolean): void {
+    this._dark = dark;
+    const webContents = this._webContents;
+    if (webContents && !webContents.isDestroyed()) {
+      void this._applyTheme(webContents).catch(() => {
+        if (!webContents.isDestroyed()) {
+          log.warn(
+            'FleetDock titlebar theme could not be updated. Reopen the window to retry.'
+          );
+        }
+      });
+    }
+  }
+
   attach(webContents: WebContents): void {
     if (this._webContents === webContents) {
       return;
@@ -27,6 +42,7 @@ export class FleetDockTitleBarInjector {
         this._readAsset('fleetdock-titlebar-extension.js'),
         true
       );
+      await this._applyTheme(webContents);
     };
     webContents.on('dom-ready', this._inject);
     if (!webContents.isLoadingMainFrame()) {
@@ -62,6 +78,17 @@ export class FleetDockTitleBarInjector {
     );
   }
 
+  private async _applyTheme(webContents: WebContents): Promise<void> {
+    if (this._dark === undefined || webContents.isDestroyed()) {
+      return;
+    }
+    await webContents.executeJavaScript(
+      `document.body.classList.toggle('app-ui-dark', ${this._dark});`,
+      true
+    );
+  }
+
+  private _dark?: boolean;
   private _webContents?: WebContents;
   private _inject?: () => Promise<void>;
   private _cssKey?: string;

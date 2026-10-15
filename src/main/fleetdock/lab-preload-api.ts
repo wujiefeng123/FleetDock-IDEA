@@ -9,6 +9,9 @@ import { EventTypeMain } from './eventtypes';
  * validate event.sender before every stateful operation.
  */
 export const fleetDockLabPreloadApi = {
+  syncFleetDockTitleBarTheme: (dark: boolean) => {
+    ipcRenderer.send(EventTypeMain.SyncTitleBarTheme, dark);
+  },
   showApplicationSettings: () => {
     ipcRenderer.send(EventTypeMain.ShowApplicationSettings);
   },
