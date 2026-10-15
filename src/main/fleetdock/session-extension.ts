@@ -24,6 +24,7 @@ import type { JupyterServer } from '../server';
 import { SettingType } from '../config/settings';
 import { QgcController } from '../groundstation/qgc-controller';
 import { FleetDockThemeController } from './theme-controller';
+import { syncFleetDockDialogTheme } from './dialog-injector';
 
 /**
  * FleetDock features are attached here as migration layers are enabled.
@@ -194,6 +195,7 @@ class FleetDockSessionExtension implements ISessionExtension {
       this._context.window.setBackgroundColor(dark ? '#181818' : '#f3f3f3');
     }
     this._titleBarInjector.setDarkTheme(dark);
+    syncFleetDockDialogTheme(this._context.window, dark);
   }
 
   private _workingDirectory(): string {

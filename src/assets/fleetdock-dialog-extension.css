@@ -8,7 +8,14 @@ body:has(.jlab-dialog-body) {
   font-family: var(--fd-ui-font) !important;
 }
 
-.jlab-dialog-body :is(.shell, .panel, .footer, .header, .body) {
+/* The device library sets its outer surface independently of the dialog body. */
+body:has(.jlab-dialog-body) > .page-container {
+  color: var(--fd-ui-text) !important;
+  background: var(--fd-ui-bg) !important;
+}
+
+.jlab-dialog-body :is(.shell, .panel, .footer, .header, .body, .sidebar, .tools) {
+  border-color: var(--fd-ui-border) !important;
   color: var(--fd-ui-text) !important;
   background: var(--fd-ui-bg) !important;
   box-shadow: none !important;

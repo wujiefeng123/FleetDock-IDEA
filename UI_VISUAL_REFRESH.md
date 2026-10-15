@@ -165,3 +165,19 @@ The opposite mismatch (saved light, desktop dark) also revealed only the final
 dark theme. Disabling synchronization retained the saved dark theme despite a
 light desktop preference. A stalled theme command has a ten-second startup limit
 and falls back to revealing the web theme.
+
+## Dialogs after a workspace theme change
+
+The shared dialog injector now tracks the current theme by owning project
+BrowserWindow. New local dialogs inherit that owner's theme, including nested
+dialogs; existing dialogs update when their owner changes theme. Unrelated
+project windows retain their own appearance. Theme updates change CSS state,
+toolkit theme metadata, shadow titlebar state and the dialog backing color,
+without recreating controls or changing IPC. A scoped rule replaces the device
+library's hard-coded light outer surface.
+
+Build, scoped lint/format checks and 537 unit tests passed. Actual IPC-created
+application-settings and device-library dialogs were verified after switching a
+light-started project to dark, then through live light/dark switching while open.
+Body, outer surface, input background and text colors were checked, and both
+original close actions remained usable. No real device operations were invoked.

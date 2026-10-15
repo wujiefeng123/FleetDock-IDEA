@@ -1,7 +1,7 @@
 // Copyright (c) Jupyter Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-import { app, WebContents } from 'electron';
+import { app, BrowserWindow, WebContents } from 'electron';
 import log from 'electron-log';
 import { readFleetDockCss } from './styles';
 
@@ -22,6 +22,19 @@ interface IStyledDialog {
 
 // [UAV-IDE MODIFY] Apply appearance only to local desktop documents, preserving all dialog IPC and controls.
 export class FleetDockDialogInjector {
+  setOwnerTheme(owner: BrowserWindow, dark: boolean): void {
+    this._ownerThemes.set(owner, dark);
+    for (const attached of this._attached.values()) {
+      if (attached.cssKey) {
+        void this._applyTheme(attached).catch(() => {
+          log.warn(
+            'FleetDock dialog theme could not be updated. Reopen the dialog to retry.'
+          );
+        });
+      }
+    }
+  }
+
   attach(webContents: WebContents): void {
     if (webContents.isDestroyed() || this._attached.has(webContents)) {
       return;
@@ -86,6 +99,7 @@ export class FleetDockDialogInjector {
         return;
       }
       attached.cssKey = key;
+      await this._applyTheme(attached);
     } catch {
       if (!webContents.isDestroyed()) {
         log.warn(
@@ -109,10 +123,55 @@ export class FleetDockDialogInjector {
     this._attached.delete(attached.webContents);
   }
 
+  private async _applyTheme(attached: IStyledDialog): Promise<void> {
+    const { webContents, generation } = attached;
+    if (
+      webContents.isDestroyed() ||
+      this._attached.get(webContents) !== attached ||
+      !webContents.getURL().startsWith('data:text/html')
+    ) {
+      return;
+    }
+    const dialog = BrowserWindow.fromWebContents(webContents);
+    let parent = dialog?.getParentWindow();
+    let dark: boolean | undefined;
+    while (parent) {
+      dark = this._ownerThemes.get(parent);
+      if (dark !== undefined) break;
+      parent = parent.getParentWindow();
+    }
+    if (dark === undefined) return;
+    const applied = await webContents.executeJavaScript(`(() => {
+      if (!document.querySelector('.jlab-dialog-body')) return false;
+      document.body.classList.toggle('app-ui-dark', ${dark});
+      document.body.dataset.jpThemeLight = '${!dark}';
+      document.querySelector('jlab-dialog-titlebar')?.classList.toggle('app-ui-dark', ${dark});
+      return true;
+    })()`);
+    if (
+      applied &&
+      generation === attached.generation &&
+      dialog &&
+      !dialog.isDestroyed()
+    ) {
+      dialog.setBackgroundColor(dark ? '#181818' : '#f3f3f3');
+    }
+  }
+
   private _attached = new Map<WebContents, IStyledDialog>();
+  private _ownerThemes = new WeakMap<BrowserWindow, boolean>();
 }
 
 let installed = false;
+let installedInjector: FleetDockDialogInjector | undefined;
+
+// [UAV-IDE MODIFY] Parent ownership keeps independently themed project windows isolated.
+export function syncFleetDockDialogTheme(
+  owner: BrowserWindow,
+  dark: boolean
+): void {
+  installedInjector?.setOwnerTheme(owner, dark);
+}
 
 export function installFleetDockDialogStyles(): void {
   if (installed) {
@@ -120,11 +179,13 @@ export function installFleetDockDialogStyles(): void {
   }
   installed = true;
   const injector = new FleetDockDialogInjector();
+  installedInjector = injector;
   const attach = (_event: Electron.Event, webContents: WebContents) =>
     injector.attach(webContents);
   app.on('web-contents-created', attach);
   app.once('will-quit', () => {
     app.removeListener('web-contents-created', attach);
     injector.dispose();
+    installedInjector = undefined;
   });
 }
